@@ -1,0 +1,22 @@
+{
+  "calendars": [
+    {
+      "name": "Castro",
+      "url": "https://p169-caldav.icloud.com/published/2/Mjc5ODA2NTExMjc5ODA2NTm0HKQycMPQjutsHPuwH1GBWxl_Vku9XiUbKsshz74QAautkInohok2whfL89HPPQ0552TouFXOJKt-SI2exBk"
+    },
+    {
+      "name": "Family",
+      "url": "https://p169-caldav.icloud.com/published/2/Mjc5ODA2NTExMjc5ODA2NTm0HKQycMPQjutsHPuwH1FUqgrfjM8DQXbGhkemJP7enEuF5jKGZOjFba8-BP0-lxhGncaYJYB2B6pLjJv3LvA"
+    },
+    {
+      "name": "GMail",
+      "url": "https://calendar.google.com/calendar/ical/castro770%40gmail.com/private-e73f1e37d3457132bd9bc7e7a2964168/basic.ics"
+    },
+    {
+      "name": "ALPA",
+      "url": "https://outlook.office365.com/owa/calendar/b71231cfcdd94878814781534989f562@alpa.org/b82c125c7e7f4f63aef6c2b2a79487243471766741358735786/calendar.ics"
+    }
+  ],
+  "timezone": "America/New_York",
+  "added": "2026-01-21"
+}
