@@ -15,21 +15,21 @@
    ```bash
    cd ~/repos/<project>
    git fetch origin
-   git worktree add -b clawdbot-<short-name> /tmp/clawdbot-<short-name> origin/<source-branch>
+   git worktree add -b openclaw-<short-name> /tmp/openclaw-<short-name> origin/<source-branch>
    ```
 
-2. **Branch naming**: `clawdbot-<short-description>`
-   - Examples: `clawdbot-listview-migration`, `clawdbot-isbusy-fix`, `clawdbot-docs-update`
+2. **Branch naming**: `openclaw-<short-description>`
+   - Examples: `openclaw-listview-migration`, `openclaw-isbusy-fix`, `openclaw-docs-update`
 
 3. **Delegate to coding agent** with explicit instructions:
    ```bash
-   cd /tmp/clawdbot-<short-name> && claude -p "<task description>
+   cd /tmp/openclaw-<short-name> && claude -p "<task description>
    
    When complete:
    1. Update documentation if applicable (mark task complete, add notes)
    2. Run /review to check for mistakes before committing
    3. Commit with message '<Task X.X: Description>'
-   4. Push: git push -u origin clawdbot-<short-name>" --dangerously-skip-permissions
+   4. Push: git push -u origin openclaw-<short-name>" --dangerously-skip-permissions
    ```
 
    **Important:** Always include step to run `/review` before commit — catches AI slop and mistakes.
@@ -37,14 +37,14 @@
 4. **After agent completes**, create PR:
    ```bash
    az repos pr create --repository "<repo>" --project "<project>" \
-     --source-branch "clawdbot-<short-name>" --target-branch "<source-branch>" \
+     --source-branch "openclaw-<short-name>" --target-branch "<source-branch>" \
      --title "<Task X.X: Description>" --description "<summary>"
    ```
 
 5. **Clean up worktree**:
    ```bash
    cd ~/repos/<project>
-   git worktree remove /tmp/clawdbot-<short-name>
+   git worktree remove /tmp/openclaw-<short-name>
    ```
 
 6. **Never commit directly to source branch** unless explicitly told to

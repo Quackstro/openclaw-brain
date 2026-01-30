@@ -1,4 +1,4 @@
-# AGENTS.md - Clawdbot Workspace
+# AGENTS.md - OpenClaw Workspace
 
 This folder is the assistant's working directory.
 

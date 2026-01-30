@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ado-pr-comments.sh — Check Azure DevOps PRs for new comments and notify via Clawdbot
+# ado-pr-comments.sh — Check Azure DevOps PRs for new comments and notify via OpenClaw
 # Usage: ./ado-pr-comments.sh [--project "ALPA Mobile"] [--org "https://dev.azure.com/airlinepilotsassociation"]
 
 set -euo pipefail
@@ -75,7 +75,7 @@ for i in $(seq 0 $((PR_COUNT - 1))); do
         content_full: .comments[0].content,
         content: (.comments[0].content | gsub("\n"; " ") | if length > 200 then .[:200] + "..." else . end),
         status: (.status // "none"),
-        mentions_clawdbot: (.comments[0].content | test("@clawdbot"; "i")),
+        mentions_openclaw: (.comments[0].content | test("@openclaw"; "i")),
         mentions_ios: (.comments[0].content | test("@ios"; "i")),
         mentions_android: (.comments[0].content | test("@android"; "i")),
         mentions_build: (.comments[0].content | test("@build"; "i"))
@@ -92,7 +92,7 @@ for i in $(seq 0 $((PR_COUNT - 1))); do
       CONTENT_FULL=$(echo "$NEW" | jq -r ".[$j].content_full")
       FILE=$(echo "$NEW" | jq -r ".[$j].file")
       LINE=$(echo "$NEW" | jq -r ".[$j].line")
-      MENTIONS=$(echo "$NEW" | jq -r ".[$j].mentions_clawdbot")
+      MENTIONS=$(echo "$NEW" | jq -r ".[$j].mentions_openclaw")
 
       COMMENT_MSG="💬 **New PR Comment**
 **PR #${PR_ID}:** ${PR_TITLE}
@@ -105,12 +105,12 @@ for i in $(seq 0 $((PR_COUNT - 1))); do
       MENTIONS_BUILD=$(echo "$NEW" | jq -r ".[$j].mentions_build")
 
       if [[ "$MENTIONS" == "true" ]]; then
-        # Strip @clawdbot mention from the task text
-        TASK_TEXT=$(echo "$CONTENT_FULL" | sed -E 's/@clawdbot//gi' | sed -E 's/@ios//gi' | sed -E 's/@android//gi' | sed -E 's/@build//gi' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+        # Strip @openclaw mention from the task text
+        TASK_TEXT=$(echo "$CONTENT_FULL" | sed -E 's/@openclaw//gi' | sed -E 's/@ios//gi' | sed -E 's/@android//gi' | sed -E 's/@build//gi' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 
         COMMENT_MSG="${COMMENT_MSG}
 
-🤖 _@clawdbot mentioned — AUTO-DELEGATING_"
+🤖 _@openclaw mentioned — AUTO-DELEGATING_"
 
         # Build delegation context as JSON
         DELEGATE_TASKS=$(echo "$DELEGATE_TASKS" | jq \
@@ -136,7 +136,7 @@ for i in $(seq 0 $((PR_COUNT - 1))); do
       [[ "$MENTIONS_ANDROID" == "true" ]] && TRIGGER_ANDROID=true
 
       if [[ "$TRIGGER_IOS" == "true" || "$TRIGGER_ANDROID" == "true" ]]; then
-        # Determine if this is also a @clawdbot delegation
+        # Determine if this is also a @openclaw delegation
         # If so, build should run AFTER the fix is pushed (post_delegate)
         BUILD_TRIGGER_MODE="immediate"
         [[ "$MENTIONS" == "true" ]] && BUILD_TRIGGER_MODE="post_delegate"

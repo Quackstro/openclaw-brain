@@ -109,7 +109,7 @@ notify() {
     fi
     
     if [[ -n "$target" ]]; then
-      clawdbot message send --channel "$channel" --target "$target" --message "$message" 2>&1 || {
+      openclaw message send --channel "$channel" --target "$target" --message "$message" 2>&1 || {
         echo "   ⚠️  Failed to send to $channel"
       }
     else

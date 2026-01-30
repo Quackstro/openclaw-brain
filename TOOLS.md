@@ -1,7 +1,7 @@
 # TOOLS.md - User Tool Notes (editable)
 
 This file is for *your* notes about external tools and conventions.
-It does not define which tools exist; Clawdbot provides built-in tools internally.
+It does not define which tools exist; OpenClaw provides built-in tools internally.
 
 ## Examples
 
@@ -14,6 +14,6 @@ It does not define which tools exist; Clawdbot provides built-in tools internall
 
 Add whatever else you want the assistant to know about your local toolchain.
 
-### Clawdbot
-- Restart Clawdbot using **supervisord**, not direct process commands.
-- Example: `sudo supervisorctl restart clawdbot`
+### OpenClaw
+- Restart OpenClaw using **supervisord**, not direct process commands.
+- Example: `sudo supervisorctl restart openclaw`
