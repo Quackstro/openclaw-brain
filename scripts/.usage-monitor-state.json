@@ -1,0 +1,25 @@
+{
+  "windows": {
+    "5-Hour": {
+      "lastPercent": 28,
+      "alertedThresholds": [
+        25
+      ],
+      "lastResetAt": "2026-02-01T05:00:00.149755+00:00"
+    },
+    "7-Day": {
+      "lastPercent": 67,
+      "alertedThresholds": [
+        25,
+        50
+      ],
+      "lastResetAt": "2026-02-02T19:00:00.149774+00:00"
+    },
+    "7-Day Sonnet": {
+      "lastPercent": 0,
+      "alertedThresholds": [],
+      "lastResetAt": null
+    }
+  },
+  "lastCheck": "2026-02-01T02:05:02.187Z"
+}
