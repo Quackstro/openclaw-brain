@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # git-sync.sh — Auto-fetch & pull tracked repos, resolve common issues
 # Called by OpenClaw cron. Outputs only when there are changes or errors.
+# Error throttling: same error is only reported once per THROTTLE_HOURS.
 set -euo pipefail
 
 REPOS=(
   "$HOME/repos/ALPA-Mobile"
   "$HOME/repos/ACA-Calculator"
 )
+
+# --- Error throttling ---
+THROTTLE_HOURS=4
+STATE_FILE="$HOME/.openclaw/.git-sync-error-state"
 
 CHANGES=()
 ERRORS=()
@@ -161,8 +166,35 @@ if [[ ${#CHANGES[@]} -gt 0 ]]; then
 fi
 
 if [[ ${#ERRORS[@]} -gt 0 ]]; then
-  echo "::ERRORS::"
-  for e in "${ERRORS[@]}"; do
-    echo "$e"
-  done
+  # Throttle duplicate errors: hash the error messages, compare to last report
+  ERROR_HASH="$(printf '%s\n' "${ERRORS[@]}" | md5sum | cut -d' ' -f1)"
+  NOW_EPOCH="$(date +%s)"
+  THROTTLE_SECS=$((THROTTLE_HOURS * 3600))
+  SHOULD_REPORT=true
+
+  if [[ -f "$STATE_FILE" ]]; then
+    LAST_HASH="$(head -1 "$STATE_FILE" 2>/dev/null || echo '')"
+    LAST_EPOCH="$(tail -1 "$STATE_FILE" 2>/dev/null || echo '0')"
+    if [[ "$LAST_HASH" == "$ERROR_HASH" ]]; then
+      ELAPSED=$((NOW_EPOCH - LAST_EPOCH))
+      if [[ "$ELAPSED" -lt "$THROTTLE_SECS" ]]; then
+        SHOULD_REPORT=false
+      fi
+    fi
+  fi
+
+  if [[ "$SHOULD_REPORT" == true ]]; then
+    echo "::ERRORS::"
+    for e in "${ERRORS[@]}"; do
+      echo "$e"
+    done
+    # Record this error report
+    mkdir -p "$(dirname "$STATE_FILE")"
+    printf '%s\n%s\n' "$ERROR_HASH" "$NOW_EPOCH" > "$STATE_FILE"
+  else
+    # Errors exist but already reported recently — stay quiet
+    if [[ ${#CHANGES[@]} -eq 0 ]]; then
+      echo "::NOCHANGE::"
+    fi
+  fi
 fi

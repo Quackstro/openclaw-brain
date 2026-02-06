@@ -1,0 +1,9 @@
+{
+  "entries": [],
+  "thresholds": {
+    "great": 15,
+    "good": 20,
+    "normal": 30,
+    "high": 40
+  }
+}

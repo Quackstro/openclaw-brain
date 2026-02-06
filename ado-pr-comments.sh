@@ -10,6 +10,9 @@ ORG="${ADO_ORG:-https://dev.azure.com/airlinepilotsassociation}"
 STATE_DIR="$HOME/clawd/.ado-pr-state"
 NOTIFY_TARGET="telegram"
 
+# Only process @ mention triggers (@openclaw, @ios, @android, @build) from this author
+AUTHORIZED_AUTHOR="${ADO_AUTHORIZED_AUTHOR:-Castro, Jose, DALMEC}"
+
 # Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -20,6 +23,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$STATE_DIR"
+
+# --- Error throttling ---
+THROTTLE_HOURS=4
+ERROR_STATE_FILE="$STATE_DIR/error_throttle"
 
 TIMESTAMP_FILE="$STATE_DIR/last_checked"
 NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -34,11 +41,39 @@ fi
 echo "[$(date -u +%H:%M:%S)] Checking PRs in '$PROJECT' since $LAST_CHECKED"
 
 # Get repo ID
-REPO_ID=$(az repos show --repository "$PROJECT" --project "$PROJECT" --org "$ORG" --query 'id' -o tsv 2>/dev/null)
-if [[ -z "$REPO_ID" ]]; then
-  echo "ERROR: Could not find repository for project '$PROJECT'"
-  exit 1
+REPO_ID=$(az repos show --repository "$PROJECT" --project "$PROJECT" --org "$ORG" --query 'id' -o tsv 2>&1)
+REPO_EXIT=$?
+if [[ $REPO_EXIT -ne 0 || -z "$REPO_ID" ]]; then
+  ERROR_MSG="Auth/access failure for '$PROJECT': $REPO_ID"
+  ERROR_HASH=$(echo "$ERROR_MSG" | md5sum | cut -d' ' -f1)
+  NOW_EPOCH=$(date +%s)
+  THROTTLE_SECS=$((THROTTLE_HOURS * 3600))
+  SHOULD_REPORT=true
+
+  if [[ -f "$ERROR_STATE_FILE" ]]; then
+    LAST_HASH=$(head -1 "$ERROR_STATE_FILE" 2>/dev/null || echo '')
+    LAST_EPOCH=$(tail -1 "$ERROR_STATE_FILE" 2>/dev/null || echo '0')
+    if [[ "$LAST_HASH" == "$ERROR_HASH" ]]; then
+      ELAPSED=$((NOW_EPOCH - LAST_EPOCH))
+      if [[ "$ELAPSED" -lt "$THROTTLE_SECS" ]]; then
+        SHOULD_REPORT=false
+      fi
+    fi
+  fi
+
+  if [[ "$SHOULD_REPORT" == true ]]; then
+    printf '%s\n%s\n' "$ERROR_HASH" "$NOW_EPOCH" > "$ERROR_STATE_FILE"
+    echo "ERROR: $ERROR_MSG"
+    exit 1
+  else
+    # Same error already reported recently — stay quiet
+    echo "No new comments found."
+    exit 0
+  fi
 fi
+
+# Clear error state on success
+rm -f "$ERROR_STATE_FILE"
 
 # Get active PRs
 PRS=$(az repos pr list --project "$PROJECT" --org "$ORG" --status active --output json 2>/dev/null)
@@ -104,7 +139,13 @@ for i in $(seq 0 $((PR_COUNT - 1))); do
       MENTIONS_ANDROID=$(echo "$NEW" | jq -r ".[$j].mentions_android")
       MENTIONS_BUILD=$(echo "$NEW" | jq -r ".[$j].mentions_build")
 
-      if [[ "$MENTIONS" == "true" ]]; then
+      # Only activate @ mention triggers if the comment author is authorized
+      IS_AUTHORIZED=false
+      if [[ "$AUTHOR" == "$AUTHORIZED_AUTHOR" ]]; then
+        IS_AUTHORIZED=true
+      fi
+
+      if [[ "$MENTIONS" == "true" && "$IS_AUTHORIZED" == "true" ]]; then
         # Strip @openclaw mention from the task text
         TASK_TEXT=$(echo "$CONTENT_FULL" | sed -E 's/@openclaw//gi' | sed -E 's/@ios//gi' | sed -E 's/@android//gi' | sed -E 's/@build//gi' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 
@@ -125,15 +166,17 @@ for i in $(seq 0 $((PR_COUNT - 1))); do
           '. + [{pr_id: $pr_id, pr_title: $pr_title, source_branch: $source_branch, target_branch: $target_branch, file: $file, line: $line, task: $task, author: $author}]')
       fi
 
-      # Detect build triggers: @ios, @android, @build
+      # Detect build triggers: @ios, @android, @build (only from authorized author)
       TRIGGER_IOS=false
       TRIGGER_ANDROID=false
-      if [[ "$MENTIONS_BUILD" == "true" ]]; then
-        TRIGGER_IOS=true
-        TRIGGER_ANDROID=true
+      if [[ "$IS_AUTHORIZED" == "true" ]]; then
+        if [[ "$MENTIONS_BUILD" == "true" ]]; then
+          TRIGGER_IOS=true
+          TRIGGER_ANDROID=true
+        fi
+        [[ "$MENTIONS_IOS" == "true" ]] && TRIGGER_IOS=true
+        [[ "$MENTIONS_ANDROID" == "true" ]] && TRIGGER_ANDROID=true
       fi
-      [[ "$MENTIONS_IOS" == "true" ]] && TRIGGER_IOS=true
-      [[ "$MENTIONS_ANDROID" == "true" ]] && TRIGGER_ANDROID=true
 
       if [[ "$TRIGGER_IOS" == "true" || "$TRIGGER_ANDROID" == "true" ]]; then
         # Determine if this is also a @openclaw delegation

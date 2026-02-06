@@ -2,7 +2,8 @@
 
 **Author:** Jarvis · **Requested by:** Dr. Castro  
 **Date:** 2026-01-30  
-**Status:** Draft  
+**Status:** ✅ Complete  
+**Completed:** 2026-02-01  
 
 ---
 
@@ -778,76 +779,76 @@ Returns:
 
 ## 12. Implementation Phases
 
-### Phase 1: Foundation (Core infrastructure)
+### Phase 1: Foundation (Core infrastructure) ✅
 **Files:** `config.ts`, `types.ts`, `store.ts`, `tags.ts`, `health.ts`, `openclaw.plugin.json`, `package.json`
 
-- [ ] Define types and config schema (including tag + auto-tag types)
-- [ ] Implement tag utilities (normalize, validate, serialize/deserialize, match)
-- [ ] Implement LanceDB wrapper (connect, create tables, store, search, delete, count, diskUsage)
-- [ ] Add tag-aware methods to store (filterByTags, updateTags, getTagCentroids)
-- [ ] Implement capacity checker (count docs, count chunks, measure disk, return health status)
-- [ ] Reuse the pattern from `memory-lancedb` for lazy init and schema creation
-- [ ] **Validation**: Unit test store operations + tag operations + capacity checks with mock data
+- [x] Define types and config schema (including tag + auto-tag types)
+- [x] Implement tag utilities (normalize, validate, serialize/deserialize, match)
+- [x] Implement LanceDB wrapper (connect, create tables, store, search, delete, count, diskUsage)
+- [x] Add tag-aware methods to store (filterByTags, updateTags, getTagCentroids)
+- [x] Implement capacity checker (count docs, count chunks, measure disk, return health status)
+- [x] Reuse the pattern from `memory-lancedb` for lazy init and schema creation
+- [x] **Validation**: Unit test store operations + tag operations + capacity checks with mock data
 
-### Phase 2: Document Parsing + OCR
+### Phase 2: Document Parsing + OCR ✅
 **Files:** `parser.ts`, `ocr.ts`, `chunker.ts`
 
-- [ ] PDF parser (pdfjs-dist — extract text per page)
-- [ ] OCR detection (sparse page check: < 50 chars per page)
-- [ ] OCR pipeline (rasterize page → tesseract CLI → extract text)
-- [ ] Graceful fallback when tesseract is not installed
-- [ ] DOCX parser (mammoth — extract raw text)
-- [ ] XLSX parser (xlsx/SheetJS — extract cell data as text per sheet)
-- [ ] PPTX parser (unzip + XML parse for slide text)
-- [ ] Format detection by extension + magic bytes
-- [ ] Recursive text chunker with overlap
-- [ ] **Validation**: Parse each fixture file (including scanned PDF), assert non-empty text, correct page counts
+- [x] PDF parser (pdfjs-dist — extract text per page)
+- [x] OCR detection (sparse page check: < 50 chars per page)
+- [x] OCR pipeline (rasterize page → tesseract CLI → extract text)
+- [x] Graceful fallback when tesseract is not installed
+- [x] DOCX parser (mammoth — extract raw text)
+- [x] XLSX parser (xlsx/SheetJS — extract cell data as text per sheet)
+- [x] PPTX parser (unzip + XML parse for slide text)
+- [x] Format detection by extension + magic bytes
+- [x] Recursive text chunker with overlap
+- [x] **Validation**: Parse each fixture file (including scanned PDF), assert non-empty text, correct page counts
 
-### Phase 3: Auto-Tagging Engine
+### Phase 3: Auto-Tagging Engine ✅
 **Files:** `auto-tagger.ts`
 
-- [ ] Keyword extraction from document text (TF-based with stop-word filtering)
-- [ ] Filename analysis (split on separators, map to tag candidates)
-- [ ] Format-based hints (spreadsheet → `data`; presentation → `presentation`)
-- [ ] Built-in pattern matching (finance/legal/engineering/hr/medical/sales/marketing keywords)
-- [ ] Custom pattern support via config (`patterns` override map)
-- [ ] Prior tag affinity: compute cosine similarity between doc summary embedding and tag centroids
-- [ ] Tag centroid cache (build on startup, incremental update on ingest/tag/delete)
-- [ ] Merge + deduplicate candidates, cap at `maxSuggestions`
-- [ ] Respect `enabled` toggle — return empty suggestions when disabled
-- [ ] **Validation**: Auto-tag a finance doc → expect "finance" suggested; auto-tag with prior tags → expect affinity matches
+- [x] Keyword extraction from document text (TF-based with stop-word filtering)
+- [x] Filename analysis (split on separators, map to tag candidates)
+- [x] Format-based hints (spreadsheet → `data`; presentation → `presentation`)
+- [x] Built-in pattern matching (finance/legal/engineering/hr/medical/sales/marketing keywords)
+- [x] Custom pattern support via config (`patterns` override map)
+- [x] Prior tag affinity: compute cosine similarity between doc summary embedding and tag centroids
+- [x] Tag centroid cache (build on startup, incremental update on ingest/tag/delete)
+- [x] Merge + deduplicate candidates, cap at `maxSuggestions`
+- [x] Respect `enabled` toggle — return empty suggestions when disabled
+- [x] **Validation**: Auto-tag a finance doc → expect "finance" suggested; auto-tag with prior tags → expect affinity matches
 
-### Phase 4: Plugin Wiring
+### Phase 4: Plugin Wiring ✅
 **Files:** `index.ts`
 
-- [ ] Register all 6 tools (`doc_ingest`, `doc_query`, `doc_list`, `doc_delete`, `doc_tag`, `doc_status`)
-- [ ] Wire capacity check into `doc_ingest` (pre-check + warning on response)
-- [ ] Wire auto-tagger into `doc_ingest` pipeline (after parse, before embed)
-- [ ] Wire tag filtering into `doc_query` and `doc_list`
-- [ ] Wire tag update logic into `doc_tag` (update meta + denormalized chunk tags + centroid cache)
-- [ ] Register CLI commands (`openclaw docrag list|stats|status|tags|purge`)
-- [ ] Wire up OpenAI embeddings (reuse pattern from memory-lancedb)
-- [ ] **Validation**: Integration test — ingest with auto-tags → verify suggestions → tag-filtered query → correct results
+- [x] Register all 6 tools (`doc_ingest`, `doc_query`, `doc_list`, `doc_delete`, `doc_tag`, `doc_status`)
+- [x] Wire capacity check into `doc_ingest` (pre-check + warning on response)
+- [x] Wire auto-tagger into `doc_ingest` pipeline (after parse, before embed)
+- [x] Wire tag filtering into `doc_query` and `doc_list`
+- [x] Wire tag update logic into `doc_tag` (update meta + denormalized chunk tags + centroid cache)
+- [x] Register CLI commands (`openclaw docrag list|stats|status|tags|purge`)
+- [x] Wire up OpenAI embeddings (reuse pattern from memory-lancedb)
+- [x] **Validation**: Integration test — ingest with auto-tags → verify suggestions → tag-filtered query → correct results
 
-### Phase 5: Health Monitor + End-to-End Validation
+### Phase 5: Health Monitor + End-to-End Validation ✅
 **Files:** `tests/validate.ts`, `tests/fixtures/generate.ts`
 
-- [ ] Register cron job for health monitoring on plugin startup
-- [ ] Health report generation with threshold detection + cooldown logic + tag summary
-- [ ] Autonomous test harness (runnable by agent via `exec`)
-- [ ] Creates sample documents programmatically (including scanned PDF)
-- [ ] Ingests each format with various tags
-- [ ] Queries with known-answer questions (with and without tag filters)
-- [ ] Validates: chunk count, search relevance, metadata accuracy, OCR extraction, tag filtering, auto-tagging
-- [ ] Tests tag operations (add, remove, update propagation to chunks)
-- [ ] Tests auto-tag suggestions + disabled mode
-- [ ] Tests capacity warning at 90%
-- [ ] Tests ingestion block at 100%
-- [ ] Tests `doc_status` output accuracy (including tag summary + autoTagEnabled)
-- [ ] Tests deletion (including centroid cache update)
-- [ ] Tests OCR graceful degradation
-- [ ] Reports pass/fail per test case with clear output
-- [ ] **Exit code 0 = all pass, 1 = failures**
+- [x] Register cron job for health monitoring on plugin startup
+- [x] Health report generation with threshold detection + cooldown logic + tag summary
+- [x] Autonomous test harness (runnable by agent via `exec`)
+- [x] Creates sample documents programmatically (including scanned PDF)
+- [x] Ingests each format with various tags
+- [x] Queries with known-answer questions (with and without tag filters)
+- [x] Validates: chunk count, search relevance, metadata accuracy, OCR extraction, tag filtering, auto-tagging
+- [x] Tests tag operations (add, remove, update propagation to chunks)
+- [x] Tests auto-tag suggestions + disabled mode
+- [x] Tests capacity warning at 90%
+- [x] Tests ingestion block at 100%
+- [x] Tests `doc_status` output accuracy (including tag summary + autoTagEnabled)
+- [x] Tests deletion (including centroid cache update)
+- [x] Tests OCR graceful degradation
+- [x] Reports pass/fail per test case with clear output
+- [x] **Exit code 0 = all pass, 1 = failures**
 
 ---
 
@@ -995,45 +996,43 @@ Auto-tagger: **0 new deps** (uses existing OpenAI embeddings + built-in keyword 
 
 All development happens in `/home/clawdbot/clawd/extensions/doc-rag/` (see Section 2 — Development Isolation Strategy). The live gateway is **never touched** until Phase 6. Each step ends with the agent running `npx tsx tests/validate.ts` in the plugin directory and iterating until green. The test harness uses isolated temp directories — zero contact with production data.
 
-### Phase 1–5: Standalone Development (gateway untouched)
+### Phase 1–5: Standalone Development (gateway untouched) ✅
 
 ```
- 1. Scaffold plugin in /home/clawdbot/clawd/extensions/doc-rag/ (package.json, manifest, index.ts shell)
- 2. Implement config.ts + types.ts (including tag + auto-tag config)
- 3. Implement tags.ts (normalize, validate, serialize, deserialize, match)
- 4. Implement store.ts (LanceDB wrapper with tag-aware methods + centroid queries)
- 5. Implement health.ts (capacity checker + report generator with tag summary)
- 6. Write store + tags + health unit tests → run validate → fix
- 7. Implement parser.ts — PDF text extraction first
- 8. Implement ocr.ts — detection + tesseract pipeline + graceful fallback
- 9. Implement parser.ts — DOCX, XLSX, PPTX parsers
-10. Implement chunker.ts
-11. Write parser + chunker + OCR tests → run validate → fix
-12. Implement auto-tagger.ts — keyword extraction + filename analysis + format hints + pattern matching
-13. Implement auto-tagger.ts — prior tag affinity (centroid cache + cosine similarity)
-14. Write auto-tagger tests → run validate → fix
-15. Wire tools in index.ts (doc_ingest + doc_query first, with auto-tags + capacity pre-check)
-16. Write integration tests (ingest with auto-tags, tag-filtered query) → run validate → fix
-17. Add doc_list + doc_delete + doc_tag + doc_status tools
-18. Write tag management tests (add/remove/propagation/centroid update) → run validate → fix
-19. Write capacity + status tests → run validate → fix
-20. Register health monitor cron job on plugin startup
-21. Write health monitor tests (alert generation, cooldown, escalation, tag breakdown) → run validate → fix
-22. Add CLI commands
-23. Full validation pass → all 30 tests green ✅
+ 1. ✅ Scaffold plugin in /home/clawdbot/clawd/extensions/doc-rag/ (package.json, manifest, index.ts shell)
+ 2. ✅ Implement config.ts + types.ts (including tag + auto-tag config)
+ 3. ✅ Implement tags.ts (normalize, validate, serialize, deserialize, match)
+ 4. ✅ Implement store.ts (LanceDB wrapper with tag-aware methods + centroid queries)
+ 5. ✅ Implement health.ts (capacity checker + report generator with tag summary)
+ 6. ✅ Write store + tags + health unit tests → run validate → fix
+ 7. ✅ Implement parser.ts — PDF text extraction first
+ 8. ✅ Implement ocr.ts — detection + tesseract pipeline + graceful fallback
+ 9. ✅ Implement parser.ts — DOCX, XLSX, PPTX parsers
+10. ✅ Implement chunker.ts
+11. ✅ Write parser + chunker + OCR tests → run validate → fix
+12. ✅ Implement auto-tagger.ts — keyword extraction + filename analysis + format hints + pattern matching
+13. ✅ Implement auto-tagger.ts — prior tag affinity (centroid cache + cosine similarity)
+14. ✅ Write auto-tagger tests → run validate → fix
+15. ✅ Wire tools in index.ts (doc_ingest + doc_query first, with auto-tags + capacity pre-check)
+16. ✅ Write integration tests (ingest with auto-tags, tag-filtered query) → run validate → fix
+17. ✅ Add doc_list + doc_delete + doc_tag + doc_status tools
+18. ✅ Write tag management tests (add/remove/propagation/centroid update) → run validate → fix
+19. ✅ Write capacity + status tests → run validate → fix
+20. ✅ Register health monitor cron job on plugin startup
+21. ✅ Write health monitor tests (alert generation, cooldown, escalation, tag breakdown) → run validate → fix
+22. ✅ Add CLI commands
+23. ✅ Full validation pass → all 30 tests green
 ```
 
-### Phase 6: Controlled Cutover (gateway integration)
-
-Only after all 30 standalone tests pass:
+### Phase 6: Controlled Cutover (gateway integration) ✅
 
 ```
-24. Copy plugin to ~/.openclaw/extensions/doc-rag/
-25. Add plugins.entries.doc-rag config (enabled: false) to openclaw.json
-26. Set enabled: true → restart gateway
-27. Manual Telegram test: upload real PDF → verify auto-tags → tag-filtered query
-28. If issues found → set enabled: false → restart (< 30s rollback)
-29. Confirm working → plugin stays enabled in production
+24. ✅ Copy plugin to ~/.openclaw/extensions/doc-rag/
+25. ✅ Add plugins.entries.doc-rag config (enabled: false) to openclaw.json
+26. ✅ Set enabled: true → restart gateway
+27. ✅ Manual Telegram test: upload real PDF → verify auto-tags → tag-filtered query
+28. ✅ No issues found — plugin stable
+29. ✅ Confirmed working → plugin stays enabled in production
 ```
 
 ---
@@ -1041,30 +1040,30 @@ Only after all 30 standalone tests pass:
 ## 18. Success Criteria (MVP)
 
 **Environment safety:**
-- [ ] All 30 standalone tests pass without the gateway running
-- [ ] Test harness uses isolated temp directories — no production data touched
-- [ ] Plugin only enabled on gateway after standalone validation is complete
-- [ ] Rollback to pre-plugin state achievable in < 30 seconds
+- [x] All 30 standalone tests pass without the gateway running
+- [x] Test harness uses isolated temp directories — no production data touched
+- [x] Plugin only enabled on gateway after standalone validation is complete
+- [x] Rollback to pre-plugin state achievable in < 30 seconds
 
 **Core functionality:**
-- [ ] Upload PDF/DOCX/XLSX/PPTX via chat → embeddings created and stored permanently
-- [ ] Documents can be tagged at ingestion with multiple category tags
-- [ ] Auto-tagging suggests relevant tags based on content keywords and prior tag affinity
-- [ ] Auto-tag suggestions clearly labeled vs user-provided tags
-- [ ] Auto-tagging can be disabled via config (`tags.autoTag.enabled: false`)
-- [ ] Tags can be added/removed after ingestion via `doc_tag`
-- [ ] Queries can be filtered by tags (OR logic across multiple tags)
-- [ ] Document listing can be filtered by tags
-- [ ] `doc_status` shows tag inventory with document counts per tag
-- [ ] Scanned PDFs processed via OCR when tesseract is available
-- [ ] Graceful warning (no crash) when tesseract is missing and scanned PDF is uploaded
-- [ ] Ask questions → get accurate, sourced answers
-- [ ] Documents persist until explicitly deleted
-- [ ] Ingestion blocked at 100% capacity with clear message
-- [ ] Cron health monitor alerts user at 90% capacity (with cooldown to avoid spam)
-- [ ] VPS-friendly: < 500MB max disk (configurable), < 50MB RAM overhead
-- [ ] All 30 autonomous validation tests pass
-- [ ] Works end-to-end via Telegram
+- [x] Upload PDF/DOCX/XLSX/PPTX via chat → embeddings created and stored permanently
+- [x] Documents can be tagged at ingestion with multiple category tags
+- [x] Auto-tagging suggests relevant tags based on content keywords and prior tag affinity
+- [x] Auto-tag suggestions clearly labeled vs user-provided tags
+- [x] Auto-tagging can be disabled via config (`tags.autoTag.enabled: false`)
+- [x] Tags can be added/removed after ingestion via `doc_tag`
+- [x] Queries can be filtered by tags (OR logic across multiple tags)
+- [x] Document listing can be filtered by tags
+- [x] `doc_status` shows tag inventory with document counts per tag
+- [x] Scanned PDFs processed via OCR when tesseract is available
+- [x] Graceful warning (no crash) when tesseract is missing and scanned PDF is uploaded
+- [x] Ask questions → get accurate, sourced answers
+- [x] Documents persist until explicitly deleted
+- [x] Ingestion blocked at 100% capacity with clear message
+- [x] Cron health monitor alerts user at 90% capacity (with cooldown to avoid spam)
+- [x] VPS-friendly: < 500MB max disk (configurable), < 50MB RAM overhead
+- [x] All 30 autonomous validation tests pass
+- [x] Works end-to-end via Telegram
 
 ---
 

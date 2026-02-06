@@ -1,19 +1,17 @@
 {
   "windows": {
     "5-Hour": {
-      "lastPercent": 28,
-      "alertedThresholds": [
-        25
-      ],
-      "lastResetAt": "2026-02-01T05:00:00.149755+00:00"
+      "lastPercent": 9,
+      "alertedThresholds": [],
+      "lastResetAt": "2026-02-06T16:59:59.711586+00:00"
     },
     "7-Day": {
-      "lastPercent": 67,
+      "lastPercent": 66,
       "alertedThresholds": [
         25,
         50
       ],
-      "lastResetAt": "2026-02-02T19:00:00.149774+00:00"
+      "lastResetAt": "2026-02-09T18:59:59.711611+00:00"
     },
     "7-Day Sonnet": {
       "lastPercent": 0,
@@ -21,5 +19,5 @@
       "lastResetAt": null
     }
   },
-  "lastCheck": "2026-02-01T02:05:02.187Z"
+  "lastCheck": "2026-02-06T13:00:01.748Z"
 }
