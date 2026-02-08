@@ -38,6 +38,8 @@
 
 Brain 2.0 is a behavioral support system that extends your biological memory. The philosophy is simple: **capture everything, organize nothing**. You drop raw thoughts — a name, an idea, a reminder, a to-do — and Brain automatically classifies them, files them into the right bucket, detects duplicates, and even creates persistent reminders for time-sensitive items. You never have to decide where something goes. Just drop it and move on.
 
+Brain offers **two ways to interact**: slash commands (`/brain drop`, `/brain search`, etc.) that execute instantly without touching the AI, and agent tools (`brain_drop`, `brain_search`, etc.) that work through natural conversation. Slash commands are faster, cheaper, and — critically — **don't add to your chat context**, keeping your conversation window clean for the work that matters.
+
 ---
 
 ## Quick Start
@@ -418,7 +420,16 @@ Brain also provides CLI commands via `openclaw brain`:
 
 ## Slash Commands
 
-Brain registers a `/brain` slash command that works directly in Telegram (and other channels) **without invoking the AI agent**. These are instant, lightweight commands.
+Brain registers a `/brain` slash command that works directly in Telegram (and other channels) **without invoking the AI agent**.
+
+**Why this matters:**
+
+- ⚡ **Instant** — No LLM round-trip. Results come back in milliseconds, not seconds.
+- 💰 **Zero token cost** — Slash commands don't consume any AI tokens.
+- 🧹 **No context pollution** — The biggest advantage. Slash commands don't add messages to your chat history. When you drop a thought via `/brain drop`, it doesn't eat into your conversation window. Your chat context stays focused on the current task, not cluttered with brain operations.
+- 🔒 **Deterministic** — Same input, same output. No LLM interpretation or hallucination risk.
+
+Use slash commands for quick captures, lookups, and status checks. Use the agent tools (via natural chat) when you need conversational follow-ups or complex queries like "search my brain for that thing my neighbor mentioned about 3D printing."
 
 ### `/brain`
 
@@ -478,7 +489,7 @@ Control Do Not Disturb mode directly.
 /brain dnd         → (same as status)
 ```
 
-> **Note:** Slash commands bypass the AI agent entirely — they're faster but don't support conversational follow-ups. For richer interactions (e.g., "search my brain for that thing about the neighbor's 3D printer"), use the agent tools via normal chat.
+> **💡 Tip:** For routine Brain operations (quick drops, status checks, DND toggles), always prefer slash commands. Reserve agent tools for when you need the AI to reason about your query — e.g., "what was that project idea I had last week about security cameras?"
 
 ---
 
