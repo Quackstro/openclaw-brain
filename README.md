@@ -203,7 +203,7 @@ Each drop is:
 4. Checked for **duplicates** and auto-merged if a near-match exists
 5. Scanned for **time-sensitive actions** (reminders, bookings, etc.)
 
-Photos are also supported — if you drop a photo, Brain runs OCR (via Tesseract) to extract the text before classifying.
+Photos are also supported — if you drop a photo and [Tesseract](https://github.com/tesseract-ocr/tesseract) is installed, Brain runs OCR to extract the text before classifying. If Tesseract isn't installed, the photo drop still works but skips text extraction silently (no error — it just classifies based on any accompanying text instead).
 
 ### Buckets
 
@@ -669,7 +669,17 @@ Check that:
 3. The reminder script exists at `/home/clawdbot/clawd/scripts/brain-reminder.mjs`
 
 ### OCR not working on photo drops
-Brain uses Tesseract for OCR. Make sure it's installed: `sudo apt install tesseract-ocr`
+Tesseract is **optional** — Brain works without it, but photo drops won't extract text. To enable OCR:
+
+```bash
+# Debian/Ubuntu
+sudo apt install tesseract-ocr
+
+# macOS
+brew install tesseract
+```
+
+If Tesseract is missing, photo drops silently skip OCR and classify based on any text you include with the photo.
 
 ### How to see everything Brain knows
 - `brain_stats` — record counts per bucket
