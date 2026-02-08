@@ -38,7 +38,9 @@
 
 Brain 2.0 is a behavioral support system that extends your biological memory. The philosophy is simple: **capture everything, organize nothing**. You drop raw thoughts — a name, an idea, a reminder, a to-do — and Brain automatically classifies them, files them into the right bucket, detects duplicates, and even creates persistent reminders for time-sensitive items. You never have to decide where something goes. Just drop it and move on.
 
-Brain offers **two ways to interact**: slash commands (`/brain drop`, `/brain search`, etc.) that execute instantly without touching the AI, and agent tools (`brain_drop`, `brain_search`, etc.) that work through natural conversation. Slash commands are faster, cheaper, and — critically — **don't add to your chat context**, keeping your conversation window clean for the work that matters.
+Brain offers **two ways to interact**. Slash commands (`/brain drop`, `/brain search`, etc.) execute instantly without touching the AI — they're faster, cheaper, and critically, **don't add to your chat context**. Your conversation window stays clean for the work that matters.
+
+For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work through natural conversation, letting the AI reason about your query and provide contextual follow-ups.
 
 ---
 
