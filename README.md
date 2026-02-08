@@ -48,12 +48,20 @@ For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work t
 
 ### 1. Install
 
-Brain 2.0 is a **separate plugin** — it does not come bundled with OpenClaw. Clone the repository into your OpenClaw extensions directory:
+Brain 2.0 is a **separate plugin** — it does not come bundled with OpenClaw.
+
+**Option A: From GitHub (recommended)**
 
 ```bash
 git clone https://github.com/quackstro/openclaw-brain.git ~/.openclaw/extensions/brain
 cd ~/.openclaw/extensions/brain
 npm install
+```
+
+**Option B: From npm** *(coming soon)*
+
+```bash
+openclaw plugins install @openclaw/brain
 ```
 
 Then restart OpenClaw to load the plugin:
