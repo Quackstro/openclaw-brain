@@ -42,7 +42,7 @@ Brain also keeps you on track with **bite-sized digests** throughout the day —
 
 Brain offers **two ways to interact**. Slash commands (`/brain drop`, `/brain search`, etc.) execute instantly without touching the AI — they're faster, cheaper, and critically, **don't add to your chat context**. Your conversation window stays clean for the work that matters.
 
-For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work through natural conversation, letting the AI reason about your query and provide contextual follow-ups.
+For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work through natural conversation, letting the AI reason about your query and provide contextual follow-ups. For example: *"What was that project idea I mentioned last week about home security?"* — the AI searches your brain, finds the relevant drop, and explains the context back to you.
 
 ---
 
