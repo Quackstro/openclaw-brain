@@ -425,3 +425,90 @@ The PoC is **done** when:
 8. **Graceful degradation works:** "Remember to pay Susie after the meeting" (conditional trigger) does NOT create a payment action. It classifies normally and notes the intent in nextActions.
 9. **Errors are non-fatal:** A failure in any payment pipeline step does not prevent the drop from being classified and routed normally.
 10. **All 13 test scenarios pass** as described in the test matrix above.
+
+---
+
+## Fast-Follow: dev_task Action Type
+
+After the payment PoC is validated, the next action type to implement is `dev_task`, which turns Brain drops into development work orders. This extends the pipeline from simple atomic operations (send DOGE) to complex multi-step work (edit files, commit, push) executed by spawned sub-agents.
+
+### Scope for v2 PoC
+
+- Detect development task intent from natural language drops
+- Resolve repo paths and target files against the Brain `projects` bucket
+- Assess change complexity and apply tiered gating (auto-approve doc edits, prompt for code changes, manual for destructive ops)
+- Spawn a coding-agent sub-agent with task context
+- Capture results: commit hash, files changed, and PR link if applicable
+- Also support `research` as a lightweight sub-agent action type (non-destructive, auto-approve)
+
+### Test Scenarios
+
+| # | Input | Type | Expected Behavior |
+|---|-------|------|-------------------|
+| 1 | "Update readme installation instructions so installation from source is the preferred method" | doc edit | Resolve repo from projects bucket. Low-risk doc edit. Auto-approve if confidence >= 0.90. Spawn sub-agent to edit README and commit. |
+| 2 | "Add error handling to the payment resolver" | code change | Resolve repo and file (`payment-resolver.ts`). Code change detected. Always prompt via Telegram, regardless of confidence score. |
+| 3 | "Research alternatives to LanceDB for vector storage" | research | Research type, non-destructive. Auto-approve. Spawn research sub-agent. Writes findings to a file and reports summary. |
+| 4 | "Fix the typo in the troubleshooting section" | doc edit | Resolve repo and target file. Low-risk doc edit. Auto-approve if confidence >= 0.90. Spawn sub-agent to fix and commit. |
+| 5 | "Delete the old migration scripts" | destructive | Destructive operation detected (file deletion). Always manual with explicit confirmation, regardless of confidence score. |
+| 6 | "Refactor the classifier to use streaming responses" | code change | Multi-file code change, medium complexity. Always prompt. Spawn sub-agent with broader file context. |
+
+### Implementation Steps
+
+#### Step 1: Extend Classifier for dev_task and research Intents
+**Estimate:** 2-3 hours
+
+- Add `"dev_task"` and `"research"` to `DetectedIntent` and `VALID_INTENTS`
+- Extend classifier prompt with dev_task detection: extract repo, files, task description
+- Extend classifier prompt with research detection: extract topic, scope
+
+#### Step 2: Build Dev Task Entity Resolver
+**Estimate:** 3-4 hours
+
+- Create `devtask-resolver.ts` module
+- Search `projects` bucket for matching repo or project name
+- Resolve repo path on disk, identify target files if specified
+- Assess complexity: S (single doc/config file), M (single source file or small set), L (multi-file refactor)
+- Classify change type: doc-edit, code-change, or destructive
+
+#### Step 3: Implement Gating Policy for dev_task
+**Estimate:** 1-2 hours
+
+- Doc edits (README, markdown, config, comments): auto-approve if confidence >= 0.90
+- Code changes (source files, tests): always prompt
+- Destructive operations (delete files, force push, schema migrations): always manual with confirmation
+- Wire into existing `action-policy.ts` framework
+
+#### Step 4: Sub-Agent Spawning and Result Capture
+**Estimate:** 3-4 hours
+
+- Implement `sessions_spawn` integration for coding-agent sub-agents
+- Pass task description, repo path, file context, and constraints to the sub-agent
+- Capture sub-agent results: commit hash, files changed, diff summary
+- Record results on the Action object and log to audit trail
+
+#### Step 5: Research Action Type
+**Estimate:** 1-2 hours
+
+- Simpler variant of dev_task: always auto-approve (non-destructive)
+- Spawn research sub-agent with topic and scope
+- Write findings to output file, report summary to user
+
+#### Step 6: Integration Testing
+**Estimate:** 2-3 hours
+
+- Test all 6 scenarios from the test matrix above
+- Test with real repos in the projects bucket
+- Test gating: verify doc edits auto-approve, code changes prompt, destructive ops require manual confirmation
+- Test error handling: unknown repo, missing files, sub-agent failure
+
+### Estimated Effort
+
+| Step | Hours |
+|------|-------|
+| 1. Extend classifier | 2-3 |
+| 2. Entity resolver | 3-4 |
+| 3. Gating policy | 1-2 |
+| 4. Sub-agent spawning | 3-4 |
+| 5. Research action | 1-2 |
+| 6. Integration testing | 2-3 |
+| **Total** | **12-18 hours** |

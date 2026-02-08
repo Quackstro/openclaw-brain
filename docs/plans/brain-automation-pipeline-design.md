@@ -542,13 +542,73 @@ interface PluginActionHandler {
 | `create_issue` | github | repo, title, body | labels, assignee | No |
 | `reminder` | cron | text, at/cron | timezone | No |
 | `http_call` | webhook | url, method | body, headers | No |
+| `dev_task` | sessions-spawn | repo, files, task, complexity | branch, pr | No |
+| `research` | sessions-spawn | topic, scope, outputPath | relatedProjects | No |
 
-### 7.3 Registration Flow
+### 7.3 Drops as Work Orders
+
+Brain is not just a filing cabinet; it is a dispatcher. Every drop is a potential work order. The pipeline routes each drop to the appropriate executor based on its action type:
+
+- **Simple tasks** (payments, reminders, messages) execute directly via plugin handlers. These are fast, atomic operations with well-defined parameters.
+- **Complex tasks** (dev work, research) spawn sub-agents via `sessions_spawn`. These are longer-running, multi-step operations that require their own context and tooling.
+- **Each action type has its own resolution logic and gating policy.** A payment resolves a person to a DOGE address. A dev_task resolves a repo path and assesses file complexity. A research task checks for related projects and ideas already in Brain.
+
+This pattern means a single drop like "Fix the typo in the README" flows through the same pipeline as "Pay Susie 5 DOGE": classify, resolve entities, propose action, evaluate policy, execute or prompt.
+
+### 7.4 dev_task Action Type
+
+The `dev_task` action type handles development work orders: code changes, documentation edits, configuration updates, and similar file-level tasks.
+
+**Executor:** Sub-agent spawn (via `sessions_spawn`)
+
+**Params:**
+- `repo`: repository path or name
+- `files`: target file(s) if specified
+- `task`: description of the work to perform
+- `complexity`: estimated complexity (S/M/L), inferred by the resolver
+
+**Resolution:**
+1. Search the `projects` bucket for a matching repo or project name.
+2. If found, resolve the repo path on disk and identify target files.
+3. Assess complexity based on scope: single file vs. multi-file, docs vs. source code, additive vs. destructive.
+
+**Gating Policy:**
+| Change Type | Gating Rule |
+|-------------|-------------|
+| Low-risk edits (docs, README, config, comments) | Auto-approve if confidence >= 0.90 |
+| Code changes (source files, tests) | Always prompt |
+| Destructive operations (delete files, force push, schema migrations) | Always manual with confirmation |
+
+**Execution:**
+Spawn a coding-agent sub-agent with the task description, repo path, and file context. The sub-agent performs the work, commits changes, and reports results.
+
+**Result:** commit hash, files changed, PR link if applicable.
+
+### 7.5 research Action Type
+
+The `research` action type handles investigative tasks: comparing tools, exploring alternatives, summarizing topics, and producing written findings.
+
+**Executor:** Sub-agent spawn (via `sessions_spawn`)
+
+**Params:**
+- `topic`: the research subject
+- `scope`: breadth and depth constraints
+- `outputPath`: where to write findings (defaults to workspace)
+
+**Resolution:**
+1. Check if the topic relates to existing projects or ideas in Brain.
+2. If related items are found, include them as context for the research sub-agent.
+
+**Gating:** Auto-approve. Research is non-destructive; it only produces output files.
+
+**Execution:** Spawn a research sub-agent that investigates the topic, writes findings to a file, and reports back with a summary.
+
+### 7.6 Registration Flow
 
 Plugins register their action handlers during initialization:
 
 ```typescript
-// In plugin init:
+// In plugin init (payment example):
 actionRegistry.register({
   actionType: "payment",
   pluginId: "doge-wallet",
@@ -884,13 +944,35 @@ Action policies are configured in `openclaw.plugin.json` under the brain plugin 
           "maxAutoValue": null,
           "requireEntityMatch": true,
           "cooldown": 10
+        },
+        "dev_task": {
+          "enabled": false,
+          "pluginId": "sessions-spawn",
+          "autoApproveThreshold": 0.90,
+          "maxAutoValue": null,
+          "requireEntityMatch": true,
+          "cooldown": 60,
+          "constraints": {
+            "codeChangesAlwaysPrompt": true,
+            "destructiveAlwaysManual": true
+          }
+        },
+        "research": {
+          "enabled": false,
+          "pluginId": "sessions-spawn",
+          "autoApproveThreshold": 0.70,
+          "maxAutoValue": null,
+          "requireEntityMatch": false,
+          "cooldown": 30
         }
       },
 
       "rateLimits": {
         "payment": { "maxPerHour": 10, "maxPerDay": 50, "cooldownSeconds": 30 },
         "send_message": { "maxPerHour": 20, "maxPerDay": 100, "cooldownSeconds": 5 },
-        "http_call": { "maxPerHour": 30, "maxPerDay": 200, "cooldownSeconds": 2 }
+        "http_call": { "maxPerHour": 30, "maxPerDay": 200, "cooldownSeconds": 2 },
+        "dev_task": { "maxPerHour": 5, "maxPerDay": 20, "cooldownSeconds": 60 },
+        "research": { "maxPerHour": 5, "maxPerDay": 20, "cooldownSeconds": 30 }
       },
 
       "spendingCaps": {
