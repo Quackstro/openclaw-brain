@@ -145,6 +145,7 @@ export async function sendPaymentConfirmation(
 
 /**
  * Send a payment failure message to Telegram.
+ * If the error is a wallet lock, includes a retry button.
  */
 export async function sendPaymentFailure(
   action: Action,
@@ -156,13 +157,33 @@ export async function sendPaymentFailure(
   const recipientName = (rp.recipientName as string) || "Unknown";
   const amount = rp.amount != null ? Number(rp.amount).toFixed(2) : "?";
 
-  const text = [
-    "Payment Failed",
-    "",
-    `To: ${recipientName}`,
-    `Amount: ${amount} DOGE`,
-    `Error: ${error}`,
-  ].join("\n");
+  const isLocked = /locked|unlock/i.test(error);
 
-  await sendTelegramMessage(target, text);
+  const text = isLocked
+    ? [
+        "Wallet Locked",
+        "",
+        `To: ${recipientName}`,
+        `Amount: ${amount} DOGE`,
+        "",
+        "Send `/wallet unlock` first, then tap Retry.",
+      ].join("\n")
+    : [
+        "Payment Failed",
+        "",
+        `To: ${recipientName}`,
+        `Amount: ${amount} DOGE`,
+        `Error: ${error}`,
+      ].join("\n");
+
+  const keyboard = isLocked
+    ? [
+        [
+          { text: "Retry", callback_data: `brain:pay:approve:${action.id}` },
+          { text: "Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
+        ],
+      ]
+    : undefined;
+
+  await sendTelegramMessage(target, text, keyboard);
 }
