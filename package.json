@@ -14,7 +14,12 @@
   "openclaw": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "install": {
+      "npmSpec": "@openclaw/brain",
+      "localPath": "extensions/brain",
+      "defaultChoice": "npm"
+    }
   },
   "scripts": {
     "test": "npx tsx tests/store.test.ts && npx tsx tests/phase1.test.ts && npx tsx tests/phase2.test.ts",

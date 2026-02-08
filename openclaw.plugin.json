@@ -1,6 +1,9 @@
 {
     "id": "brain",
     "kind": "service",
+    "name": "Brain 2.0",
+    "version": "2026.2.1",
+    "description": "Behavioral support system — captures, classifies, and routes thoughts into semantic buckets",
     "uiHints": {
         "embedding.apiKey": {
             "label": "Embedding API Key",

@@ -719,6 +719,103 @@ const brainPlugin = {
     );
 
     // ==================================================================
+    // Auto-reply Commands (slash commands without LLM)
+    // ==================================================================
+
+    api.registerCommand({
+      name: "brain",
+      description: "Brain 2.0 dashboard & commands",
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: async (ctx: any) => {
+        const args = ctx.args?.trim() ?? "";
+
+        // /brain drop <text>
+        if (args.startsWith("drop ")) {
+          const text = args.slice(5).trim();
+          if (!text) return { text: "Usage: /brain drop <text>" };
+          try {
+            const result = await handleDrop(
+              store, embedder, text, "drop", undefined,
+              { classifierFn, confidenceThreshold: cfg.classification.confidenceThreshold, async: false },
+            );
+            return { text: `✅ ${result.message}\nID: ${result.id}` };
+          } catch (err: any) {
+            return { text: `❌ Drop failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain search <query>
+        if (args.startsWith("search ")) {
+          const query = args.slice(7).trim();
+          if (!query) return { text: "Usage: /brain search <query>" };
+          try {
+            const vector = await embedder.embed(query);
+            const allResults: Array<{ bucket: string; record: Record<string, unknown>; score: number }> = [];
+            for (const bucket of MAIN_BUCKETS) {
+              try {
+                const results = await store.search(bucket, vector, 5);
+                for (const r of results) allResults.push({ bucket, ...r });
+              } catch {}
+            }
+            allResults.sort((a, b) => b.score - a.score);
+            const top = allResults.slice(0, 5);
+            if (top.length === 0) return { text: "No results found." };
+            const text = top
+              .map((r, i) => `${i + 1}. [${r.bucket}] ${(r.record as any).title || (r.record as any).name || r.record.id} (${(r.score * 100).toFixed(0)}%)`)
+              .join("\n");
+            return { text: `🔍 Found ${top.length} results:\n\n${text}` };
+          } catch (err: any) {
+            return { text: `❌ Search failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain stats
+        if (args === "stats") {
+          try {
+            const stats = await store.stats();
+            const lines = stats.map((s: any) => `  ${s.table}: ${s.count}`);
+            return { text: `📊 Brain Buckets\n\n${lines.join("\n")}` };
+          } catch (err: any) {
+            return { text: `❌ Stats failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain dnd [on|off|status]
+        if (args.startsWith("dnd")) {
+          const sub = args.slice(3).trim() || "status";
+          try {
+            if (sub === "status") {
+              const status = await checkDnd();
+              return { text: status.quiet ? `🔇 DND is ON: ${status.reason}` : `🔔 DND is OFF: ${status.reason}` };
+            }
+            if (sub === "on" || sub === "off") {
+              const on = sub === "on";
+              const result = await toggleDnd(on);
+              return { text: on
+                ? "🔇 Do Not Disturb enabled."
+                : `🔔 Do Not Disturb disabled.${result.recovery ? `\n${result.recovery}` : ""}` };
+            }
+            return { text: "Usage: /brain dnd [on|off|status]" };
+          } catch (err: any) {
+            return { text: `❌ DND failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain (no args) — dashboard
+        try {
+          const stats = await store.stats();
+          const lines = stats.map((s: any) => `  ${s.table}: ${s.count}`);
+          const dndStatus = await checkDnd();
+          const dndLine = dndStatus.quiet ? "🔇 DND: ON" : "🔔 DND: OFF";
+          return { text: `🧠 Brain 2.0 Dashboard\n\n${lines.join("\n")}\n\n${dndLine}\n\nCommands: drop, search, stats, dnd` };
+        } catch (err: any) {
+          return { text: `❌ ${err.message ?? err}` };
+        }
+      },
+    });
+
+    // ==================================================================
     // Service
     // ==================================================================
 
