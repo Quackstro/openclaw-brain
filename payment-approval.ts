@@ -157,6 +157,8 @@ export async function sendPaymentFailure(
   const recipientName = (rp.recipientName as string) || "Unknown";
   const amount = rp.amount != null ? Number(rp.amount).toFixed(2) : "?";
 
+  // TODO: Replace retry button with auto-retry. Listen for wallet unlock event,
+  // then automatically execute any pending actions with status "awaiting-unlock".
   const isLocked = /locked|unlock/i.test(error);
 
   const text = isLocked
