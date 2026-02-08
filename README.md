@@ -25,6 +25,7 @@
   - [brain_dnd](#brain_dnd)
   - [brain_fix](#brain_fix)
 - [CLI Reference](#cli-reference)
+- [Slash Commands](#slash-commands)
 - [Bracket Tags](#bracket-tags)
 - [Digests](#digests)
 - [Do Not Disturb](#do-not-disturb)
@@ -412,6 +413,72 @@ Brain also provides CLI commands via `openclaw brain`:
 | `openclaw brain list <bucket>` | List records in a bucket (e.g., `openclaw brain list people --limit 10`) |
 | `openclaw brain drop "<text>"` | Drop a thought from the command line |
 | `openclaw brain audit` | Show recent audit trail entries (`--id <inputId>` to filter, `--limit <n>`) |
+
+---
+
+## Slash Commands
+
+Brain registers a `/brain` slash command that works directly in Telegram (and other channels) **without invoking the AI agent**. These are instant, lightweight commands.
+
+### `/brain`
+
+Show the Brain dashboard — bucket counts + DND status.
+
+```
+🧠 Brain 2.0 Dashboard
+
+  people: 2
+  projects: 37
+  ideas: 11
+  ...
+
+🔔 DND: OFF
+
+Commands: drop, search, stats, dnd
+```
+
+### `/brain drop <text>`
+
+Quick-capture a thought. Runs the full classify → route pipeline synchronously.
+
+```
+/brain drop Call dentist about appointment next Tuesday
+```
+→ `✅ Captured [ToDo]` (with ID)
+
+### `/brain search <query>`
+
+Semantic search across all buckets. Returns top 5 matches with scores.
+
+```
+/brain search ALPA mobile project status
+```
+→ 
+```
+🔍 Found 5 results:
+
+1. [projects] ALPA Mobile (92%)
+2. [projects] ACA Calculator (78%)
+3. [admin] Weekly report schedule (71%)
+...
+```
+
+### `/brain stats`
+
+Show record counts per bucket (same as the dashboard stats section).
+
+### `/brain dnd [on|off|status]`
+
+Control Do Not Disturb mode directly.
+
+```
+/brain dnd on      → 🔇 Do Not Disturb enabled.
+/brain dnd off     → 🔔 Do Not Disturb disabled.
+/brain dnd status  → 🔇 DND is ON: Manual override
+/brain dnd         → (same as status)
+```
+
+> **Note:** Slash commands bypass the AI agent entirely — they're faster but don't support conversational follow-ups. For richer interactions (e.g., "search my brain for that thing about the neighbor's 3D printer"), use the agent tools via normal chat.
 
 ---
 
