@@ -40,9 +40,9 @@ Brain 2.0 is a behavioral support system that extends your biological memory. Th
 
 Brain also keeps you on track with **bite-sized digests** throughout the day: morning briefs, midday checks, afternoon wraps, and night wind-downs. Each digest is intentionally small, **Pinky** 🤙, so you can scan it and act in seconds, not minutes. There's also a weekly review to zoom out and see the bigger picture.
 
-Brain offers **two ways to interact**. Slash commands (`/brain drop`, `/brain search`, etc.) execute instantly without touching the AI. They're faster, cheaper, and critically, **don't add to your chat context**. Your conversation window stays clean for the work that matters. Just type `/brain drop Pick up prescription tomorrow` and it's captured, classified, and reminded. Zero AI tokens spent.
+Brain offers **two ways to interact**. Slash commands (`/brain drop`, `/brain search`, etc.) execute instantly without touching the AI: they're faster, cheaper, and critically, **don't add to your chat context**. Your conversation window stays clean for the work that matters. Just type `/brain drop Pick up prescription tomorrow` and it's captured, classified, and reminded, all at zero AI token cost.
 
-For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work through natural conversation, letting the AI reason about your query and provide contextual follow-ups. For example: *"Did I already drop something about picking up my prescription?"* The AI searches your brain, finds the match, and confirms the context back to you.
+For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work through natural conversation, letting the AI reason about your query and provide contextual follow-ups. For example: *"Did I already drop something about picking up my prescription?"* and the AI searches your brain, finds the match, and confirms the context back to you.
 
 ---
 
@@ -50,7 +50,7 @@ For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work t
 
 ### 1. Install
 
-Brain 2.0 is a **separate plugin**. It does not come bundled with OpenClaw.
+Brain 2.0 is a **separate plugin** and does not come bundled with OpenClaw.
 
 **Option A: From GitHub (recommended)**
 
@@ -205,7 +205,7 @@ Each drop is:
 4. Checked for **duplicates** and auto-merged if a near-match exists
 5. Scanned for **time-sensitive actions** (reminders, bookings, etc.)
 
-Photos are also supported. If you drop a photo and [Tesseract](https://github.com/tesseract-ocr/tesseract) is installed, Brain runs OCR to extract the text before classifying. If Tesseract isn't installed, the photo drop still works but skips text extraction silently. It classifies based on any accompanying text instead.
+Photos are also supported. If you drop a photo and [Tesseract](https://github.com/tesseract-ocr/tesseract) is installed, Brain runs OCR to extract the text before classifying. If Tesseract isn't installed, the photo drop still works but skips text extraction silently, classifying based on any accompanying text instead.
 
 ### Buckets
 
@@ -363,7 +363,7 @@ brain_audit(inputId: "abc12345")
 
 ### brain_digest
 
-Generate a Brain digest. Respects DND: if quiet mode is active, the digest is skipped and recorded.
+Generate a Brain digest. Respects DND, so if quiet mode is active the digest is skipped and recorded.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -377,7 +377,7 @@ brain_digest(type: "morning")
   🎯 Today's Actions:
     1. [admin] Dentist Appointment (overdue: 2025-05-30) → Call to reschedule
     2. [people] Sarah (overdue: 2025-06-01) → Send follow-up email
-  ⚠️ 4 overdue items total. Check Brain for details.
+  ⚠️ 4 overdue items total, check Brain for details.
 ```
 
 ### brain_dnd
@@ -589,7 +589,7 @@ Brain generates **5 types of digests** to keep you on track throughout the day:
 
 Daily digests are **template-based** (no LLM cost). They pull data directly from your buckets and format it using predefined templates.
 
-All digests respect **DND mode**. If DND is active, the digest is recorded as skipped and can be caught up later.
+All digests respect **DND mode**, so if DND is active the digest is recorded as skipped and can be caught up later.
 
 ---
 
@@ -605,7 +605,7 @@ By default, Brain is silent from **10:00 PM to 7:00 AM** (Eastern Time). During 
 - **`brain_dnd(action: "off")`**: Resumes notifications. If digests were skipped during DND, Brain tells you what you missed.
 
 ### Recovery
-When you turn DND off, Brain reports which digests were skipped so you can generate a catch-up summary if needed. It does **not** flood you with all the missed digests, just a single summary.
+When you turn DND off, Brain reports which digests were skipped so you can generate a catch-up summary if needed. It does **not** flood you with all the missed digests; just a single summary.
 
 DND state is persisted to `~/.openclaw/brain/dnd-state.json` and survives restarts.
 
@@ -665,7 +665,7 @@ You need to add an `embedding.apiKey` to your Brain config. This is the only req
 Make sure `classification.apiKey` is set. Without it, classification is disabled and drops remain in the inbox as "pending."
 
 ### Items going to needs_review too often
-Lower the `classification.confidenceThreshold` (e.g., from `0.80` to `0.70`). The default is conservative. A 70% threshold lets more items auto-route.
+Lower the `classification.confidenceThreshold` (e.g., from `0.80` to `0.70`). The default is conservative; a 70% threshold lets more items auto-route.
 
 ### Duplicate items not being merged
 Deduplication uses a cosine similarity threshold of **0.92**. If two items are similar but not *very* similar, they'll be stored separately. You can manually merge with `brain_fix(id: "abc", correction: "merge def")`.
@@ -677,7 +677,7 @@ Check that:
 3. The reminder script exists at `/home/clawdbot/clawd/scripts/brain-reminder.mjs`
 
 ### OCR not working on photo drops
-Tesseract is **optional**. Brain works without it, but photo drops won't extract text. To enable OCR:
+Tesseract is **optional** and Brain works without it, but photo drops won't extract text. To enable OCR:
 
 ```bash
 # Debian/Ubuntu
