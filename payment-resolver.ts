@@ -129,10 +129,58 @@ export async function resolvePaymentEntities(
         if (contactAddrMatch) {
           result.dogeAddress = contactAddrMatch[0];
           result.resolutionScore += 0.33;
-        } else {
-          // Search wallet history for transactions with this person's name
-          const history = await getWalletHistory();
+        }
+
+        // If still no address, search crypto-related buckets (finance, admin)
+        // for records mentioning this person + a DOGE address
+        if (!result.dogeAddress) {
           const personName = (best.record.name as string || "").toLowerCase();
+          const cryptoBuckets = ["finance", "admin"] as const;
+          for (const bucket of cryptoBuckets) {
+            if (result.dogeAddress) break;
+            try {
+              const query = `${personName} DOGE address wallet`;
+              const vec = await embedder.embed(query);
+              const hits = await store.search(bucket, vec, 5);
+              for (const hit of hits) {
+                // Scan all string fields for a DOGE address
+                const record = hit.record;
+                const fieldsToCHeck = [
+                  record.entries,
+                  record.notes,
+                  record.title,
+                  record.summary,
+                  record.nextActions,
+                  record.tags,
+                  record.contactInfo,
+                  record.description,
+                ];
+                for (const field of fieldsToCHeck) {
+                  if (!field) continue;
+                  const str = typeof field === "string" ? field : JSON.stringify(field);
+                  const match = str.match(DOGE_ADDRESS_RE);
+                  if (match) {
+                    // Verify this record is related to the recipient
+                    const strLower = str.toLowerCase();
+                    if (strLower.includes(personName) || hit.score >= 0.7) {
+                      result.dogeAddress = match[0];
+                      result.resolutionScore += 0.33;
+                      break;
+                    }
+                  }
+                }
+                if (result.dogeAddress) break;
+              }
+            } catch {
+              // Non-fatal, continue to next bucket
+            }
+          }
+        }
+
+        // Last resort: search wallet transaction history by name
+        if (!result.dogeAddress) {
+          const personName = (best.record.name as string || "").toLowerCase();
+          const history = await getWalletHistory();
           for (const tx of history) {
             const txMemo = ((tx.memo || tx.reason || "") as string).toLowerCase();
             if (txMemo.includes(personName) && tx.address) {
