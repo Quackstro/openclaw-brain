@@ -451,14 +451,14 @@ Quick-capture a thought. Runs the full classify → route pipeline synchronously
 Semantic search across all buckets. Returns top 5 matches with scores.
 
 ```
-/brain search ALPA mobile project status
+/brain search mobile app project status
 ```
 → 
 ```
 🔍 Found 5 results:
 
-1. [projects] ALPA Mobile (92%)
-2. [projects] ACA Calculator (78%)
+1. [projects] Mobile App Redesign (92%)
+2. [projects] Payment Integration (78%)
 3. [admin] Weekly report schedule (71%)
 ...
 ```
