@@ -556,6 +556,10 @@ If no bracket tag is provided, Brain uses the classifier's detected intent and k
 
 ## Digests
 
+> **Feature codename: Pinky** 🤙
+>
+> Digests are intentionally small — bite-sized summaries you can scan and act on in seconds, not minutes. This is a core design principle: if a digest requires effort to read, it's failed. Word limits are enforced per digest type to keep them tight and actionable.
+
 Brain generates **5 types of digests** to keep you on track throughout the day:
 
 ### ☀️ Morning Brief (default: 150 words)
