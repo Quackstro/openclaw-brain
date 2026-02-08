@@ -2,6 +2,8 @@
 
 > Your second brain. Capture anything, organize nothing.
 
+> 💛 **Like Brain?** Tips help keep development going: `D6i8TeepmrGztENxdME84d2x5UVjLWncat` (DOGE)
+
 ---
 
 ## Table of Contents
