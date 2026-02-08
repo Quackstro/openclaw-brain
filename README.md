@@ -98,15 +98,21 @@ Add your embedding API key to the Brain config in your OpenClaw configuration (`
 
 ### 3. First Drop
 
-Tell your assistant:
+**Slash command** (fastest — no AI, no context cost):
 
-> "Remember that I need to call the dentist next Tuesday"
+```
+/brain drop Call dentist next Tuesday
+```
 
-Or use the tool directly:
+**Agent tool** (programmatic — used by the AI when you interact via chat):
 
 > brain_drop: "Call dentist next Tuesday"
 
-That's it. Brain captures it, classifies it as **admin** (appointment), and creates a reminder for Tuesday. ✅
+**Natural language** (conversational — the AI decides to use Brain for you):
+
+> "Remember that I need to call the dentist next Tuesday"
+
+All three do the same thing. Brain captures it, classifies it as **admin** (appointment), and creates a reminder for Tuesday. ✅
 
 ---
 
