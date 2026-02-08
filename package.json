@@ -1,0 +1,26 @@
+{
+  "name": "@openclaw/brain",
+  "version": "2026.2.1",
+  "type": "module",
+  "description": "Brain 2.0 — Behavioral support system that captures thoughts, classifies them, stores structured data, and proactively surfaces the right information.",
+  "dependencies": {
+    "@lancedb/lancedb": "^0.23.0",
+    "@sinclair/typebox": "0.34.47"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.3"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "npx tsx tests/store.test.ts && npx tsx tests/phase1.test.ts && npx tsx tests/phase2.test.ts",
+    "test:store": "npx tsx tests/store.test.ts",
+    "test:phase1": "npx tsx tests/phase1.test.ts",
+    "test:phase2": "npx tsx tests/phase2.test.ts",
+    "build": "echo 'TypeScript compilation handled by OpenClaw runtime'"
+  }
+}
