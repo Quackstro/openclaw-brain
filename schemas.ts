@@ -88,6 +88,8 @@ export interface PersonRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -107,6 +109,8 @@ export interface ProjectRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -123,6 +127,8 @@ export interface IdeaRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -139,6 +145,8 @@ export interface AdminRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -156,6 +164,8 @@ export interface DocumentRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -175,6 +185,8 @@ export interface GoalRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -191,6 +203,8 @@ export interface HealthRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -209,6 +223,8 @@ export interface FinanceRecord {
   entries: string;
   /** JSON-serialized string[] */
   tags: string;
+  /** JSON-serialized Action[] */
+  actions?: string;
   vector: number[];
 }
 
@@ -256,6 +272,29 @@ export interface NeedsReviewEntry {
 }
 
 // ============================================================================
+// Action interface (for payment actions, etc.)
+// ============================================================================
+
+/** A proposed or executed action attached to a bucket record. */
+export interface Action {
+  id: string;
+  type: string;
+  confidence: number;
+  params: Record<string, string>;
+  resolvedParams: Record<string, unknown>;
+  status: "proposed" | "approved" | "executing" | "complete" | "failed" | "dismissed";
+  gating: "auto" | "manual";
+  executionScore: number;
+  pluginId: string;
+  trigger: string | null;
+  createdAt: string;
+  executedAt: string | null;
+  auditId: string | null;
+  result: unknown;
+  error: string | null;
+}
+
+// ============================================================================
 // Union type for any bucket record
 // ============================================================================
 
@@ -280,7 +319,7 @@ export type AnyRecord =
 // ============================================================================
 
 /** Detected actionable intent values. */
-export type DetectedIntent = "reminder" | "todo" | "purchase" | "call" | "booking" | "none";
+export type DetectedIntent = "reminder" | "todo" | "purchase" | "call" | "booking" | "payment" | "none";
 
 export interface ClassificationResult {
   bucket: MainBucket | "unknown";
@@ -299,6 +338,12 @@ export interface ClassificationResult {
   tags: string[];
   /** Inferred actionable intent from classifier (when no explicit bracket tag). */
   detectedIntent?: DetectedIntent;
+  /** Proposed actions extracted by the classifier (e.g. payment details). */
+  proposedActions?: Array<{
+    type: string;
+    confidence: number;
+    params: Record<string, string>;
+  }>;
 }
 
 // ============================================================================
@@ -349,6 +394,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         lastInteraction: "",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -364,6 +410,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         dueDate: "",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -377,6 +424,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         relatedTo: "[]",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -390,6 +438,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         recurring: "",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -404,6 +453,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         relatedTo: "[]",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -419,6 +469,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         relatedProjects: "[]",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -433,6 +484,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         followUpDate: "",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 
@@ -448,6 +500,7 @@ export function schemaSeed(table: TableName, vectorDim: number): Record<string, 
         nextActions: "[]",
         entries: "[]",
         tags: "[]",
+        actions: "[]",
         vector: zeroVec,
       };
 

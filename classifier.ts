@@ -34,7 +34,11 @@ Also detect the user's actionable intent from the text:
 - "purchase" — something to buy, a purchase to make
 - "call" — needs to call someone or follow up by phone
 - "booking" — needs to book/schedule an appointment or reservation
+- "payment" — wants to send money, pay someone, tip someone. Extract from text:
+  recipient (person name), amount (numeric), currency (default DOGE), reason (why paying).
 - "none" — no specific actionable intent, just a note or observation
+
+When detectedIntent is "payment", also populate the "proposedActions" array with extracted payment parameters.
 
 OUTPUT (JSON only, no markdown fences):
 {
@@ -47,7 +51,8 @@ OUTPUT (JSON only, no markdown fences):
   "urgency": "now|today|this-week|someday",
   "followUpDate": "YYYY-MM-DD or null",
   "tags": ["max", "3", "tags"],
-  "detectedIntent": "reminder|todo|purchase|call|booking|none"
+  "detectedIntent": "reminder|todo|purchase|call|booking|payment|none",
+  "proposedActions": [{"type": "payment", "confidence": 0.0-1.0, "params": {"recipient": "", "amount": "", "currency": "DOGE", "reason": ""}}]
 }`;
 
 // ============================================================================
@@ -92,7 +97,26 @@ export const CLASSIFICATION_JSON_SCHEMA = {
     tags: { type: "array" as const, items: { type: "string" as const }, maxItems: 3 },
     detectedIntent: {
       type: "string" as const,
-      enum: ["reminder", "todo", "purchase", "call", "booking", "none"],
+      enum: ["reminder", "todo", "purchase", "call", "booking", "payment", "none"],
+    },
+    proposedActions: {
+      type: "array" as const,
+      items: {
+        type: "object" as const,
+        properties: {
+          type: { type: "string" as const },
+          confidence: { type: "number" as const },
+          params: {
+            type: "object" as const,
+            properties: {
+              recipient: { type: "string" as const },
+              amount: { type: "string" as const },
+              currency: { type: "string" as const },
+              reason: { type: "string" as const },
+            },
+          },
+        },
+      },
     },
   },
   required: [
@@ -353,7 +377,7 @@ async function classifyWithGemini(
  */
 /** Valid detected intent values. */
 const VALID_INTENTS: Set<string> = new Set([
-  "reminder", "todo", "purchase", "call", "booking", "none",
+  "reminder", "todo", "purchase", "call", "booking", "payment", "none",
 ]);
 
 function normalizeClassification(raw: any): ClassificationResult {
@@ -379,6 +403,7 @@ function normalizeClassification(raw: any): ClassificationResult {
     followUpDate: raw.followUpDate ?? null,
     tags: (raw.tags ?? []).slice(0, 3),
     detectedIntent,
+    proposedActions: Array.isArray(raw.proposedActions) ? raw.proposedActions : undefined,
   };
 }
 

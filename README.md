@@ -650,6 +650,8 @@ Brain is actively evolving. Here's what's coming:
 
 ### v2.5: Intelligence
 - [ ] **Custom buckets**: Add, remove, split, and merge buckets to fit your workflow. Define custom fields, classification behavior, and routing rules per bucket. Your Brain, your structure.
+- [ ] **Drops as work orders**: Use drops to trigger dev_task (code/doc changes) and research (web search + summary) actions, with tiered gating for safety
+- [ ] **Payment actions**: DOGE-powered actions via the wallet plugin. Drops like "tip @alice 50 DOGE" trigger invoice creation, payment, and verification
 - [ ] **Hybrid search**: Combine keyword + semantic search for better results
 - [ ] **Cross-bucket links**: Automatically detect and surface relationships between items (e.g., a person linked to a project)
 - [ ] **Learning from corrections**: When you move a misclassified item, Brain learns and improves over time
