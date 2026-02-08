@@ -25,7 +25,7 @@ Brain 2.0 is a behavioral support system that extends your biological memory. Th
 
 Brain also keeps you on track with **bite-sized digests** throughout the day: morning briefs, midday checks, afternoon wraps, and night wind-downs. Each digest is intentionally small, **Pinky** 🤙, so you can scan it and act in seconds, not minutes. There's also a weekly review to zoom out and see the bigger picture.
 
-Brain offers **two ways to interact**. Slash commands (`/brain drop`, `/brain search`, etc.) execute instantly without touching the AI: they're faster, cheaper, and critically, **don't add to your chat context**. Your conversation window stays clean for the work that matters. Just type `/brain drop Pick up prescription tomorrow` and it's captured, classified, and reminded, all at zero AI token cost.
+Brain offers **two ways to interact**. Slash commands (`/brain drop`, `/brain search`, etc.) execute instantly without touching the AI: they're faster, cheaper, and critically, **don't add to your chat context**. Your conversation window stays clean for the work that matters. Just type `/drop Pick up prescription tomorrow` and it's captured, classified, and reminded, all at zero AI token cost.
 
 For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work through natural conversation, letting the AI reason about your query and provide contextual follow-ups. For example: *"Did I already drop something about picking up my prescription?"* and the AI searches your brain, finds the match, and confirms the context back to you.
 
@@ -88,7 +88,7 @@ Add your embedding API key to the Brain config in your OpenClaw configuration (`
 **Slash command** (fastest, no AI, no context cost):
 
 ```
-/brain drop Call dentist next Tuesday
+/drop Call dentist next Tuesday
 ```
 
 **Agent tool** (programmatic, used by the AI when you interact via chat):
@@ -135,14 +135,23 @@ Show the Brain dashboard with bucket counts and DND status.
 Commands: drop, search, stats, dnd
 ```
 
-#### `/brain drop <text>`
+#### `/drop <text>`
 
-Quick-capture a thought. Runs the full classify → route pipeline synchronously.
+The fastest way to capture a thought. Shortcut for `/brain drop`.
 
 ```
-/brain drop Call dentist about appointment next Tuesday
+/drop Call dentist about appointment next Tuesday
 ```
 → `✅ Captured [ToDo]` (with ID)
+
+#### `/brain drop <text>`
+
+Same as `/drop`, for when you want the full command.
+
+```
+/brain drop Pick up prescription tomorrow
+```
+→ `✅ Captured` (with ID)
 
 #### `/brain search <query>`
 
@@ -621,3 +630,19 @@ If Tesseract is missing, photo drops silently skip OCR and classify based on any
 - `brain_search("*")`: browse items
 - `openclaw brain list <bucket>`: list all records in a bucket
 - `brain_audit`: view the full audit trail
+
+---
+
+## License
+
+MIT — Built by [Quackstro LLC](https://quackstro.com)
+
+---
+
+## Support the Project
+
+If you find Brain useful, tips are always appreciated:
+
+**DOGE Address:** `D6i8TeepmrGztENxdME84d2x5UVjLWncat`
+
+Every DOGE goes toward hosting, continued development, and keeping the lights on. 🧠🐕

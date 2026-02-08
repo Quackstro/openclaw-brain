@@ -723,6 +723,26 @@ const brainPlugin = {
     // ==================================================================
 
     api.registerCommand({
+      name: "drop",
+      description: "Quick-capture a thought into Brain",
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: async (ctx: any) => {
+        const text = ctx.args?.trim() ?? "";
+        if (!text) return { text: "Usage: /drop <text>" };
+        try {
+          const result = await handleDrop(
+            store, embedder, text, "drop", undefined,
+            { classifierFn, confidenceThreshold: cfg.classification.confidenceThreshold, async: false },
+          );
+          return { text: `✅ ${result.message}\nID: ${result.id}` };
+        } catch (err: any) {
+          return { text: `❌ Drop failed: ${err.message ?? err}` };
+        }
+      },
+    });
+
+    api.registerCommand({
       name: "brain",
       description: "Brain 2.0 dashboard & commands",
       acceptsArgs: true,
