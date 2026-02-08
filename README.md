@@ -18,6 +18,7 @@
 - [Under the Hood](#under-the-hood)
 - [Reference](#reference)
 - [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
 
 ---
 
@@ -632,6 +633,39 @@ If Tesseract is missing, photo drops silently skip OCR and classify based on any
 - `brain_search("*")`: browse items
 - `openclaw brain list <bucket>`: list all records in a bucket
 - `brain_audit`: view the full audit trail
+
+---
+
+## Roadmap
+
+Brain is actively evolving. Here's what's coming:
+
+### v2.1: Quality of Life
+- [ ] **Classification feedback messages**: See where Brain routed your drop ("📂 Routed 'Call dentist' → admin, 93% confidence")
+- [ ] **Configurable digest schedule**: Enable/disable individual digests, change times and word limits via config
+- [ ] **Needs-review workflow**: Dedicated tools to triage low-confidence items quickly
+- [ ] **Search result details**: Richer results with summaries and next actions in one call
+- [ ] **Bulk operations**: Trash or move multiple items at once
+- [ ] **Voice note transcription**: Whisper integration for automatic voice-to-text capture
+
+### v2.5: Intelligence
+- [ ] **Custom buckets**: Add, remove, split, and merge buckets to fit your workflow. Define custom fields, classification behavior, and routing rules per bucket. Your Brain, your structure.
+- [ ] **Hybrid search**: Combine keyword + semantic search for better results
+- [ ] **Cross-bucket links**: Automatically detect and surface relationships between items (e.g., a person linked to a project)
+- [ ] **Learning from corrections**: When you move a misclassified item, Brain learns and improves over time
+- [ ] **Few-shot classification**: Build a bank of gold-standard examples from your corrections for better accuracy
+- [ ] **Smart merge suggestions**: Prompt before creating near-duplicates
+- [ ] **LLM-powered weekly review**: Natural language insights instead of template summaries
+
+### v3.0: Autonomous Memory
+- [ ] **Knowledge graph visualization**: Interactive web view of your entire Brain as a connected graph
+- [ ] **Context-aware proactive recall**: Brain surfaces relevant items during conversations without being asked
+- [ ] **Calendar integration**: Cross-reference today's events with Brain items in morning digests
+- [ ] **Spaced repetition**: Important items resurface at increasing intervals so you don't forget
+- [ ] **Location-aware reminders**: "Remind me to buy milk when I'm near the store"
+- [ ] **Email capture**: Forward emails to Brain for automatic extraction and classification
+
+See the [full roadmap](plans/brain-roadmap.md) for detailed descriptions, complexity estimates, and priority matrix.
 
 ---
 
