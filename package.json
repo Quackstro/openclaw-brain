@@ -1,5 +1,5 @@
 {
-  "name": "@openclaw/brain",
+  "name": "@quackstro/brain",
   "version": "2026.2.1",
   "type": "module",
   "description": "Brain 2.0 — Behavioral support system that captures thoughts, classifies them, stores structured data, and proactively surfaces the right information.",
@@ -16,7 +16,7 @@
       "./index.ts"
     ],
     "install": {
-      "npmSpec": "@openclaw/brain",
+      "npmSpec": "@quackstro/brain",
       "localPath": "extensions/brain",
       "defaultChoice": "npm"
     }
