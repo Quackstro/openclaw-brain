@@ -63,7 +63,7 @@ npm install
 **Option B: From npm** *(coming soon)*
 
 ```bash
-openclaw plugins install @quackstro/brain
+openclaw plugins install @quackstro/openclaw-brain
 ```
 
 Then restart OpenClaw to load the plugin:
