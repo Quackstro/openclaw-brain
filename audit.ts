@@ -22,7 +22,15 @@ export type AuditAction =
   | "fixed"
   | "archived"
   | "action-routed"
-  | "merged";
+  | "merged"
+  | "action-proposed"
+  | "action-resolved"
+  | "action-policy-check"
+  | "action-approved"
+  | "action-executing"
+  | "action-executed"
+  | "action-failed"
+  | "action-dismissed";
 
 export interface LogAuditParams {
   action: AuditAction;

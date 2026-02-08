@@ -19,10 +19,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { ClassificationResult, DetectedIntent } from "./schemas.js";
+import type { ClassificationResult, DetectedIntent, EmbeddingProvider } from "./schemas.js";
 import type { BrainStore } from "./store.js";
 import { logAudit } from "./audit.js";
 import { tagToIntent, type InputTag } from "./tag-parser.js";
+import { resolvePaymentEntities, type PaymentResolution } from "./payment-resolver.js";
+import { createPaymentAction } from "./payment-action.js";
+import { evaluatePaymentPolicy, type PolicyDecision } from "./action-policy.js";
+import { sendPaymentApproval, sendPaymentConfirmation, sendPaymentFailure } from "./payment-approval.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,6 +51,7 @@ export interface ActionRouterConfig {
   telegramChatId?: string;   // default: 8511108690
   extractionModel?: string;  // default: claude-haiku-3.5
   enabled?: boolean;         // default: true
+  embedder?: EmbeddingProvider; // needed for payment entity resolution
 }
 
 // ============================================================================
@@ -59,7 +64,13 @@ export type ActionType =
   | "booking-created"
   | "todo-tagged"
   | "purchase-tagged"
-  | "call-tagged";
+  | "call-tagged"
+  | "payment-proposed"
+  | "payment-resolved"
+  | "payment-executed"
+  | "payment-auto-executed"
+  | "payment-pending"
+  | "payment-failed";
 
 export interface ActionResult {
   action: ActionType;
@@ -753,6 +764,233 @@ async function handleTimeSensitiveAction(
 }
 
 // ============================================================================
+// Payment execution via CLI
+// ============================================================================
+
+/**
+ * Execute a payment via `openclaw wallet send` CLI.
+ * Returns the txid on success, or throws on failure.
+ */
+async function executeWalletSend(
+  to: string,
+  amount: number,
+  reason: string,
+): Promise<string> {
+  const { stdout, stderr } = await execFileAsync("openclaw", [
+    "wallet", "send",
+    "--to", to,
+    "--amount", String(amount),
+    "--reason", reason,
+    "--json",
+  ], { timeout: 30000 });
+
+  // Extract JSON from output
+  const startIdx = stdout.indexOf("{");
+  if (startIdx < 0) {
+    throw new Error(`No JSON in wallet send output: ${stdout.slice(0, 200)}`);
+  }
+  const endIdx = stdout.lastIndexOf("}");
+  const parsed = JSON.parse(stdout.slice(startIdx, endIdx + 1));
+
+  if (parsed.error) {
+    throw new Error(parsed.error);
+  }
+
+  return parsed.txid || parsed.id || "unknown";
+}
+
+// ============================================================================
+// Payment action handler
+// ============================================================================
+
+/**
+ * Handle a payment intent: resolve entities, create action, evaluate policy,
+ * and either auto-execute, prompt via Telegram, or store as pending.
+ */
+async function handlePaymentAction(
+  store: BrainStore,
+  classification: ClassificationResult,
+  rawText: string,
+  inboxId: string,
+  config: ActionRouterConfig,
+): Promise<ActionResult> {
+  const chatId = config.telegramChatId ?? "8511108690";
+
+  // Need embedder for entity resolution
+  if (!config.embedder) {
+    console.error("[brain] Payment action: No embedder configured, skipping");
+    return { action: "no-action", details: "No embedder for payment resolution" };
+  }
+
+  // Extract params from classifier proposedActions
+  const proposedAction = classification.proposedActions?.[0];
+  const params = proposedAction?.params ?? {};
+
+  // Step 1: Resolve entities
+  let resolution: PaymentResolution;
+  try {
+    resolution = await resolvePaymentEntities(params, rawText, store, config.embedder);
+  } catch (err) {
+    console.error("[brain] Payment resolver error:", err);
+    await logAudit(store, {
+      action: "action-routed",
+      inputId: inboxId,
+      details: `Payment entity resolution failed: ${String(err)}`,
+    });
+    return { action: "payment-failed", details: `Resolution failed: ${String(err)}` };
+  }
+
+  await logAudit(store, {
+    action: "action-routed",
+    inputId: inboxId,
+    details: `Payment resolved: to=${resolution.dogeAddress ?? "?"}, amount=${resolution.amount ?? "?"}, score=${resolution.resolutionScore.toFixed(2)}, errors=[${resolution.errors.join("; ")}]`,
+  });
+
+  // Step 2: Create action object
+  const action = createPaymentAction(classification, resolution);
+
+  await logAudit(store, {
+    action: "action-routed",
+    inputId: inboxId,
+    details: `Payment action proposed: id=${action.id}, executionScore=${action.executionScore.toFixed(2)}`,
+  });
+
+  // Step 3: Evaluate policy
+  const policy = evaluatePaymentPolicy(action, resolution);
+  action.gating = policy.decision === "auto" ? "auto" : "manual";
+
+  await logAudit(store, {
+    action: "action-routed",
+    inputId: inboxId,
+    details: `Payment policy: decision=${policy.decision}, reason=${policy.reason}`,
+  });
+
+  // Step 4: Act on policy decision
+  switch (policy.decision) {
+    case "auto": {
+      // Auto-execute immediately
+      if (!resolution.dogeAddress || !resolution.amount) {
+        return { action: "payment-failed", details: "Cannot auto-execute: missing address or amount" };
+      }
+
+      action.status = "executing";
+      await logAudit(store, {
+        action: "action-routed",
+        inputId: inboxId,
+        details: `Payment auto-executing: ${resolution.amount} DOGE to ${resolution.dogeAddress}`,
+      });
+
+      try {
+        const txid = await executeWalletSend(
+          resolution.dogeAddress,
+          resolution.amount,
+          resolution.reason || `Brain payment to ${resolution.recipientName ?? "unknown"}`,
+        );
+
+        action.status = "complete";
+        action.executedAt = new Date().toISOString();
+        action.result = { txid };
+
+        await logAudit(store, {
+          action: "action-routed",
+          inputId: inboxId,
+          details: `Payment auto-executed: txid=${txid}`,
+        });
+
+        // Send confirmation to Telegram
+        try {
+          await sendPaymentConfirmation(action, txid, chatId);
+        } catch { /* non-fatal */ }
+
+        return {
+          action: "payment-auto-executed",
+          details: `Auto-executed: ${resolution.amount} DOGE to ${resolution.recipientName ?? resolution.dogeAddress}, txid=${txid}`,
+        };
+      } catch (err) {
+        action.status = "failed";
+        action.error = String(err);
+
+        await logAudit(store, {
+          action: "action-routed",
+          inputId: inboxId,
+          details: `Payment auto-execution failed: ${String(err)}`,
+        });
+
+        try {
+          await sendPaymentFailure(action, String(err), chatId);
+        } catch { /* non-fatal */ }
+
+        return { action: "payment-failed", details: `Execution failed: ${String(err)}` };
+      }
+    }
+
+    case "prompt":
+    case "prompt-warning": {
+      // Send Telegram approval message
+      action.status = "proposed";
+
+      // Store action in a JSON file for later retrieval by callback handler
+      try {
+        const fs = await import("node:fs/promises");
+        const actionDir = `${process.env.HOME ?? "/home/clawdbot"}/.openclaw/brain/pending-actions`;
+        await fs.mkdir(actionDir, { recursive: true });
+        await fs.writeFile(
+          `${actionDir}/${action.id}.json`,
+          JSON.stringify({ action, resolution, inboxId }, null, 2),
+        );
+      } catch (err) {
+        console.error("[brain] Failed to store pending action:", err);
+      }
+
+      try {
+        await sendPaymentApproval(action, policy.decision, chatId);
+      } catch (err) {
+        console.error("[brain] Failed to send approval message:", err);
+        await logAudit(store, {
+          action: "action-routed",
+          inputId: inboxId,
+          details: `Payment approval message failed: ${String(err)}`,
+        });
+      }
+
+      return {
+        action: "payment-proposed",
+        details: `Awaiting approval: ${resolution.amount ?? "?"} DOGE to ${resolution.recipientName ?? resolution.dogeAddress ?? "?"} (${policy.decision})`,
+      };
+    }
+
+    case "pending":
+    default: {
+      // Store but don't prompt
+      action.status = "proposed";
+
+      try {
+        const fs = await import("node:fs/promises");
+        const actionDir = `${process.env.HOME ?? "/home/clawdbot"}/.openclaw/brain/pending-actions`;
+        await fs.mkdir(actionDir, { recursive: true });
+        await fs.writeFile(
+          `${actionDir}/${action.id}.json`,
+          JSON.stringify({ action, resolution, inboxId }, null, 2),
+        );
+      } catch (err) {
+        console.error("[brain] Failed to store pending action:", err);
+      }
+
+      await logAudit(store, {
+        action: "action-routed",
+        inputId: inboxId,
+        details: `Payment stored as pending (low score): ${resolution.amount ?? "?"} DOGE to ${resolution.recipientName ?? "?"}`,
+      });
+
+      return {
+        action: "payment-pending",
+        details: `Stored as pending (score too low): ${action.executionScore.toFixed(2)}`,
+      };
+    }
+  }
+}
+
+// ============================================================================
 // Main entry point
 // ============================================================================
 
@@ -811,10 +1049,13 @@ export async function routeActions(
         );
 
       case "booking":
-        // Booking intent — extract time for appointment reminder
+        // Booking intent -- extract time for appointment reminder
         return await handleTimeSensitiveAction(
           store, classification, rawText, inboxId, config, "booking",
         );
+
+      case "payment":
+        return await handlePaymentAction(store, classification, rawText, inboxId, config);
 
       default:
         // No explicit intent — fall back to existing shouldRoute heuristic

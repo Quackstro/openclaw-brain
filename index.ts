@@ -225,6 +225,7 @@ const brainPlugin = {
       telegramChatId: "8511108690",
       extractionModel: cfg.classification.model,
       enabled: true,
+      embedder,
     };
 
     api.logger.info(

@@ -245,7 +245,15 @@ export interface AuditEntry {
     | "fixed"
     | "archived"
     | "action-routed"
-    | "merged";
+    | "merged"
+    | "action-proposed"
+    | "action-resolved"
+    | "action-policy-check"
+    | "action-approved"
+    | "action-executing"
+    | "action-executed"
+    | "action-failed"
+    | "action-dismissed";
   inputId: string;
   outputId?: string;
   bucket?: string;
