@@ -83,5 +83,34 @@ arrives as a regular user message. Handle these patterns:
 - The brain-reminder.mjs script handles Telegram message delivery with buttons
 - Nag jobs fire every 5 minutes until dismissed or snoozed
 
+---
+
+## Brain Payment Callbacks (inline button handling)
+When a user clicks a Brain payment inline button on Telegram, the callback_data
+arrives as a regular user message. Handle these patterns:
+
+### Approve: `brain:pay:approve:<actionId>`
+1. Read the pending action file: `~/.openclaw/brain/pending-actions/<actionId>.json`
+2. Execute: `openclaw wallet send --to <address> --amount <amount> --reason "<reason>"`
+3. Update action status to "complete", record txid
+4. Send confirmation to Telegram: "Payment Sent: <amount> DOGE to <recipient>, TxID: <txid>"
+5. Log to brain audit trail
+6. Delete the pending action file
+
+### Edit Amount: `brain:pay:edit:<actionId>`
+1. Reply asking for the new amount: "What amount should I send? (Current: X DOGE)"
+2. On next user message with a number, update the pending action file with new amount
+3. Re-send the approval message with updated amount
+
+### Dismiss: `brain:pay:dismiss:<actionId>`
+1. Read and delete the pending action file: `~/.openclaw/brain/pending-actions/<actionId>.json`
+2. Log dismissal to brain audit trail
+3. Reply: "Payment dismissed."
+
+### Notes
+- The actionId is a UUID stored in `~/.openclaw/brain/pending-actions/`
+- These callbacks are ALWAYS handled -- even after context compaction
+- Payment actions are stored as JSON files with { action, resolution, inboxId }
+
 ## Customize
 - Add your preferred style, rules, and "memory" here.
