@@ -101,9 +101,9 @@ export async function sendPaymentApproval(
 
   const keyboard = [
     [
-      { text: "Approve", callback_data: `brain:pay:approve:${action.id}` },
-      { text: "Edit Amount", callback_data: `brain:pay:edit:${action.id}` },
-      { text: "Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
+      { text: "✅ Approve", callback_data: `brain:pay:approve:${action.id}` },
+      { text: "💰 Edit Amount", callback_data: `brain:pay:edit:${action.id}` },
+      { text: "❌ Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
     ],
   ];
 
@@ -181,8 +181,8 @@ export async function sendPaymentFailure(
   const keyboard = isLocked
     ? [
         [
-          { text: "Retry", callback_data: `brain:pay:approve:${action.id}` },
-          { text: "Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
+          { text: "🔓 Retry", callback_data: `brain:pay:approve:${action.id}` },
+          { text: "❌ Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
         ],
       ]
     : undefined;
