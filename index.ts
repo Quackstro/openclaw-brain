@@ -840,6 +840,103 @@ const brainPlugin = {
     });
 
     // ==================================================================
+    // Callback Handler: Payment inline buttons (approve/edit/dismiss)
+    // ==================================================================
+
+    api.registerCallbackHandler?.({
+      pattern: /^brain:pay:/,
+      handler: async (ctx: any) => {
+        const callbackData = ctx.callbackData ?? ctx.data ?? "";
+        const parts = callbackData.split(":");
+        // brain:pay:<action>:<actionId>
+        const action = parts[2];
+        const actionId = parts.slice(3).join(":");
+
+        const pendingDir = `${homedir()}/.openclaw/brain/pending-actions`;
+        const filePath = `${pendingDir}/${actionId}.json`;
+
+        if (!existsSync(filePath)) {
+          return { text: "Payment action not found or already completed." };
+        }
+
+        const data = JSON.parse(readFileSync(filePath, "utf8"));
+        const payAction = data.action;
+        const rp = payAction.resolvedParams;
+        const execFileAsync = promisify(execFile);
+
+        if (action === "approve") {
+          // Try to execute the payment
+          try {
+            const { stdout } = await execFileAsync("openclaw", [
+              "wallet", "send",
+              "--to", rp.to,
+              "--amount", String(rp.amount),
+              "--reason", rp.reason || "Brain payment",
+              "--json",
+            ], { timeout: 30000 });
+
+            const startIdx = stdout.indexOf("{");
+            if (startIdx < 0) throw new Error("No JSON in wallet output");
+            const endIdx = stdout.lastIndexOf("}");
+            const parsed = JSON.parse(stdout.slice(startIdx, endIdx + 1));
+            if (parsed.error) throw new Error(parsed.error);
+
+            // Success: update action
+            payAction.status = "complete";
+            payAction.executedAt = new Date().toISOString();
+            payAction.result = { txid: parsed.txid || parsed.id, fee: parsed.fee };
+            writeFileSync(filePath, JSON.stringify(data, null, 2));
+
+            const txid = parsed.txid || parsed.id || "unknown";
+            const shortTxid = txid.length > 16 ? `${txid.slice(0, 8)}...${txid.slice(-8)}` : txid;
+
+            return {
+              text: `✅ Payment Sent\n\n👤 To: ${rp.recipientName || "Unknown"}\n💰 Amount: ${Number(rp.amount).toFixed(2)} DOGE\n🔗 TxID: ${shortTxid}`,
+            };
+          } catch (err: any) {
+            const errMsg = String(err.message || err);
+            const isLocked = /locked|unlock/i.test(errMsg);
+
+            if (isLocked) {
+              // Mark as awaiting-unlock for auto-retry
+              payAction.status = "awaiting-unlock";
+              writeFileSync(filePath, JSON.stringify(data, null, 2));
+
+              return {
+                text: `🔒 Wallet Locked\n\n👤 To: ${rp.recipientName || "Unknown"}\n💰 Amount: ${Number(rp.amount).toFixed(2)} DOGE\n\nSend /wallet unlock first, then tap Retry.`,
+                replyMarkup: {
+                  inline_keyboard: [
+                    [
+                      { text: "🔓 Retry", callback_data: `brain:pay:approve:${actionId}` },
+                      { text: "❌ Dismiss", callback_data: `brain:pay:dismiss:${actionId}` },
+                    ],
+                  ],
+                },
+              };
+            }
+
+            payAction.status = "failed";
+            payAction.error = errMsg;
+            writeFileSync(filePath, JSON.stringify(data, null, 2));
+            return { text: `❌ Payment Failed\n\n👤 To: ${rp.recipientName}\n💰 Amount: ${Number(rp.amount).toFixed(2)} DOGE\n\nError: ${errMsg}` };
+          }
+        }
+
+        if (action === "dismiss") {
+          payAction.status = "dismissed";
+          writeFileSync(filePath, JSON.stringify(data, null, 2));
+          return { text: "✅ Payment dismissed." };
+        }
+
+        if (action === "edit") {
+          return { text: `What amount should I send? (Current: ${rp.amount} DOGE)\n\nReply with the new amount.` };
+        }
+
+        return { text: "Unknown payment action." };
+      },
+    });
+
+    // ==================================================================
     // Service
     // ==================================================================
 
