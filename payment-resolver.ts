@@ -7,6 +7,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 
 import type { BrainStore } from "./store.js";
@@ -64,7 +65,6 @@ async function getWalletHistory(): Promise<WalletTx[]> {
   // tool is agent-only. The audit log is the source of truth.
   try {
     const auditPath = `${process.env.HOME || "/home/clawdbot"}/.openclaw/doge/audit/audit.jsonl`;
-    const { readFileSync } = await import("node:fs");
     const lines = readFileSync(auditPath, "utf8").trim().split("\n");
     const txs: WalletTx[] = [];
     for (const line of lines) {
@@ -83,8 +83,10 @@ async function getWalletHistory(): Promise<WalletTx[]> {
         }
       } catch { /* skip malformed lines */ }
     }
+    console.log(`[brain] payment-resolver: loaded ${txs.length} send transactions from wallet audit log`);
     return txs;
-  } catch {
+  } catch (err) {
+    console.error(`[brain] payment-resolver: failed to read wallet audit log: ${err}`);
     return [];
   }
 }
