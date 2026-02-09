@@ -876,27 +876,33 @@ const brainPlugin = {
         const pendingDir = `${homedir()}/.openclaw/brain/pending-actions`;
         mkdirSync(eventsDir, { recursive: true });
 
-        const execFileAsync = promisify(execFile);
+        let retryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
         async function retryPendingPayments(): Promise<void> {
           if (!existsSync(pendingDir)) return;
           const files = readdirSync(pendingDir).filter(f => f.endsWith(".json"));
           const execFileAsync = promisify(execFile);
+          const retried = new Set<string>();
+
           for (const file of files) {
             try {
               const data = JSON.parse(readFileSync(`${pendingDir}/${file}`, "utf8"));
               const action = data.action;
-              // Only retry awaiting-unlock actions with a resolved address
               if (!action?.resolvedParams?.to || !action?.resolvedParams?.amount) continue;
               if (action.status !== "awaiting-unlock") continue;
+              if (retried.has(action.id)) continue;
 
               api.logger.info(`brain: sending auto-execute event for ${action.id} after wallet unlock`);
+              retried.add(action.id);
 
-              // Send system event to the agent via cron (same pattern as auto-approve)
+              // Mark as proposed so it doesn't get retried again
+              action.status = "proposed";
+              writeFileSync(`${pendingDir}/${file}`, JSON.stringify(data, null, 2));
+
               await execFileAsync("openclaw", [
                 "cron", "add",
                 "--name", `Brain Retry: ${action.id.slice(0, 8)}`,
-                "--at", new Date(Date.now() + 2000).toISOString(),
+                "--at", new Date(Date.now() + 3000).toISOString(),
                 "--session", "main",
                 "--system-event", `brain:pay:auto-execute:${action.id}`,
                 "--delete-after-run",
@@ -913,13 +919,15 @@ const brainPlugin = {
         try {
           const watcher = watch(eventsDir, (eventType, filename) => {
             if (filename === "wallet-unlocked") {
+              // Debounce: fs.watch fires multiple events for a single file write.
+              // Only process once within a 3-second window.
+              if (retryDebounceTimer) return;
               api.logger.info("brain: detected wallet unlock event, retrying pending payments");
-              // Small delay to let wallet fully initialize
-              setTimeout(() => {
+              retryDebounceTimer = setTimeout(() => {
+                retryDebounceTimer = null;
                 retryPendingPayments().catch(err => {
                   api.logger.error(`brain: retryPendingPayments failed: ${err}`);
                 });
-                // Clean up the trigger file
                 try { unlinkSync(`${eventsDir}/wallet-unlocked`); } catch { /* ok */ }
               }, 2000);
             }
