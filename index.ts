@@ -843,28 +843,27 @@ const brainPlugin = {
     // Service
     // ==================================================================
 
-    // Send "I am back" to Telegram on gateway start
-    api.on("gateway_start", async () => {
-      try {
-        const configPath = `${homedir()}/.openclaw/openclaw.json`;
-        const config = JSON.parse(readFileSync(configPath, "utf8"));
-        const botToken = config.channels?.telegram?.botToken;
-        if (!botToken) return;
-        const chatId = actionRouterConfig.telegramChatId ?? "8511108690";
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text: "🤖 I am back." }),
-        });
-      } catch (err) {
-        api.logger.error(`brain: startup message failed: ${err}`);
-      }
-    });
-
     api.registerService({
       id: "brain",
-      start: () => {
+      start: async () => {
         api.logger.info(`brain: initialized (db: ${resolvedDbPath})`);
+
+        // Send startup message to Telegram
+        try {
+          const configPath = `${homedir()}/.openclaw/openclaw.json`;
+          const config = JSON.parse(readFileSync(configPath, "utf8"));
+          const botToken = config.channels?.telegram?.botToken;
+          if (botToken) {
+            const chatId = actionRouterConfig.telegramChatId ?? "8511108690";
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chat_id: chatId, text: "🤖 I am back." }),
+            });
+          }
+        } catch (err) {
+          api.logger.error(`brain: startup message failed: ${err}`);
+        }
 
         // Watch for wallet unlock events and retry pending payments
         const eventsDir = `${homedir()}/.openclaw/events`;
