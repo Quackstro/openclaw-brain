@@ -59,16 +59,31 @@ const DOGE_ADDRESS_RE = /\bD[1-9A-HJ-NP-Za-km-z]{24,33}\b/;
 // ============================================================================
 
 async function getWalletHistory(): Promise<WalletTx[]> {
+  // Read directly from the wallet audit log (JSONL file).
+  // The CLI `openclaw wallet history` doesn't exist; the wallet_history
+  // tool is agent-only. The audit log is the source of truth.
   try {
-    const { stdout } = await execFileAsync("openclaw", ["wallet", "history", "--json"], {
-      timeout: 10000,
-    });
-    // Extract JSON array from output (skip banner lines)
-    const startIdx = stdout.indexOf("[");
-    if (startIdx < 0) return [];
-    const endIdx = stdout.lastIndexOf("]");
-    if (endIdx < 0) return [];
-    return JSON.parse(stdout.slice(startIdx, endIdx + 1));
+    const auditPath = `${process.env.HOME || "/home/clawdbot"}/.openclaw/doge/audit/audit.jsonl`;
+    const { readFileSync } = await import("node:fs");
+    const lines = readFileSync(auditPath, "utf8").trim().split("\n");
+    const txs: WalletTx[] = [];
+    for (const line of lines) {
+      if (!line) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry.action === "send" && entry.address) {
+          txs.push({
+            txid: entry.txid || "",
+            address: entry.address,
+            amount: entry.amount ? entry.amount / 100000000 : undefined, // koinu to DOGE
+            type: "send",
+            memo: entry.reason || "",
+            reason: entry.reason || "",
+          });
+        }
+      } catch { /* skip malformed lines */ }
+    }
+    return txs;
   } catch {
     return [];
   }
