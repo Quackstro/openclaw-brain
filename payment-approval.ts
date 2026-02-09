@@ -160,32 +160,47 @@ export async function sendPaymentFailure(
   // Auto-retry is handled via file watcher in index.ts (watches ~/.openclaw/events/wallet-unlocked).
   // The retry button below is a fallback in case the watcher misses the event.
   const isLocked = /locked|unlock/i.test(error);
+  const isInsufficientFunds = /insufficient funds/i.test(error);
 
-  const text = isLocked
-    ? [
-        "Wallet Locked",
-        "",
-        `To: ${recipientName}`,
-        `Amount: ${amount} DOGE`,
-        "",
-        "Send `/wallet unlock` first, then tap Retry.",
-      ].join("\n")
-    : [
-        "Payment Failed",
-        "",
-        `To: ${recipientName}`,
-        `Amount: ${amount} DOGE`,
-        `Error: ${error}`,
-      ].join("\n");
+  let text: string;
+  let keyboard: Array<Array<{ text: string; callback_data: string }>> | undefined;
 
-  const keyboard = isLocked
-    ? [
-        [
-          { text: "🔓 Retry", callback_data: `brain:pay:approve:${action.id}` },
-          { text: "❌ Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
-        ],
-      ]
-    : undefined;
+  if (isLocked) {
+    text = [
+      "🔒 Wallet Locked",
+      "",
+      `👤 To: ${recipientName}`,
+      `💰 Amount: ${amount} DOGE`,
+      "",
+      "Send `/wallet unlock` first, then tap Retry.",
+    ].join("\n");
+    keyboard = [[
+      { text: "🔓 Retry", callback_data: `brain:pay:approve:${action.id}` },
+      { text: "❌ Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
+    ]];
+  } else if (isInsufficientFunds) {
+    text = [
+      "⏳ Waiting for Confirmations",
+      "",
+      `👤 To: ${recipientName}`,
+      `💰 Amount: ${amount} DOGE`,
+      "",
+      "Not enough confirmed funds. Recent transactions are still pending confirmation (typically 1-2 minutes).",
+      "Tap Retry once they confirm.",
+    ].join("\n");
+    keyboard = [[
+      { text: "🔄 Retry", callback_data: `brain:pay:approve:${action.id}` },
+      { text: "❌ Dismiss", callback_data: `brain:pay:dismiss:${action.id}` },
+    ]];
+  } else {
+    text = [
+      "❌ Payment Failed",
+      "",
+      `👤 To: ${recipientName}`,
+      `💰 Amount: ${amount} DOGE`,
+      `⚠️ Error: ${error}`,
+    ].join("\n");
+  }
 
   await sendTelegramMessage(target, text, keyboard);
 }
