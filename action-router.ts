@@ -781,31 +781,22 @@ async function handleTimeSensitiveAction(
  */
 async function executeWalletSend(
   actionId: string,
-  to: string,
-  amount: number,
-  reason: string,
   config: ActionRouterConfig,
 ): Promise<void> {
-  const gatewayUrl = config.gatewayUrl ?? "http://127.0.0.1:18789";
-
-  // Send a system event to the main session telling the agent to execute
+  // Create a one-shot cron job that fires immediately, injecting a system event
+  // into the main agent session. The agent handles wallet_send execution.
   const eventText = `brain:pay:auto-execute:${actionId}`;
-  const response = await fetch(`${gatewayUrl}/api/sessions/agent:main:main/message`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.gatewayToken}`,
-    },
-    body: JSON.stringify({
-      role: "system",
-      content: eventText,
-    }),
-  });
+  const { stdout } = await execFileAsync("openclaw", [
+    "cron", "add",
+    "--name", `Brain Auto-Pay: ${actionId.slice(0, 8)}`,
+    "--at", new Date(Date.now() + 2000).toISOString(),
+    "--session", "main",
+    "--system-event", eventText,
+    "--delete-after-run",
+    "--json",
+  ], { timeout: 15000 });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Failed to send auto-execute event: ${response.status} ${body.slice(0, 200)}`);
-  }
+  console.log(`[brain] payment auto-execute cron created for ${actionId}: ${stdout.slice(0, 200)}`);
 }
 
 // ============================================================================
@@ -890,13 +881,7 @@ async function handlePaymentAction(
       });
 
       try {
-        await executeWalletSend(
-          action.id,
-          resolution.dogeAddress,
-          resolution.amount,
-          resolution.reason || `Brain payment to ${resolution.recipientName ?? "unknown"}`,
-          config,
-        );
+        await executeWalletSend(action.id, config);
 
         // The agent will handle execution and update the pending action file.
         // We leave status as "proposed" so the agent knows to execute it.
