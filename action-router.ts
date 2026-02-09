@@ -881,11 +881,18 @@ async function handlePaymentAction(
       });
 
       try {
-        await executeWalletSend(action.id, config);
-
-        // The agent will handle execution and update the pending action file.
-        // We leave status as "proposed" so the agent knows to execute it.
+        // Write pending action file BEFORE sending event so the agent can find it
         action.status = "proposed";
+        const pendingDir = `${process.env.HOME || "/home/clawdbot"}/.openclaw/brain/pending-actions`;
+        const { mkdirSync, writeFileSync } = await import("node:fs");
+        mkdirSync(pendingDir, { recursive: true });
+        writeFileSync(`${pendingDir}/${action.id}.json`, JSON.stringify({
+          action,
+          resolution,
+          inboxId,
+        }, null, 2));
+
+        await executeWalletSend(action.id, config);
 
         await logAudit(store, {
           action: "action-routed",
@@ -895,7 +902,7 @@ async function handlePaymentAction(
 
         return {
           action: "payment-auto-executed",
-          details: `Auto-executed: ${resolution.amount} DOGE to ${resolution.recipientName ?? resolution.dogeAddress}, txid=${txid}`,
+          details: `Auto-execute event sent: ${resolution.amount} DOGE to ${resolution.recipientName ?? resolution.dogeAddress}`,
         };
       } catch (err) {
         action.status = "failed";
