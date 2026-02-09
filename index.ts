@@ -7,6 +7,9 @@
 
 import { Type } from "@sinclair/typebox";
 import { homedir } from "node:os";
+import { watch, readFileSync, readdirSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import { BrainStore } from "./store.js";
 import { ALL_TABLES, MAIN_BUCKETS, type EmbeddingProvider, type TableName } from "./schemas.js";
@@ -844,8 +847,82 @@ const brainPlugin = {
       id: "brain",
       start: () => {
         api.logger.info(`brain: initialized (db: ${resolvedDbPath})`);
+
+        // Watch for wallet unlock events and retry pending payments
+        const eventsDir = `${homedir()}/.openclaw/events`;
+        const pendingDir = `${homedir()}/.openclaw/brain/pending-actions`;
+        mkdirSync(eventsDir, { recursive: true });
+
+        const execFileAsync = promisify(execFile);
+
+        async function retryPendingPayments(): Promise<void> {
+          if (!existsSync(pendingDir)) return;
+          const files = readdirSync(pendingDir).filter(f => f.endsWith(".json"));
+          for (const file of files) {
+            try {
+              const data = JSON.parse(readFileSync(`${pendingDir}/${file}`, "utf8"));
+              const action = data.action;
+              // Only retry proposed/awaiting-unlock actions with a resolved address
+              if (!action?.resolvedParams?.to || !action?.resolvedParams?.amount) continue;
+              if (action.status !== "proposed" && action.status !== "awaiting-unlock") continue;
+
+              api.logger.info(`brain: retrying payment ${action.id} after wallet unlock`);
+              const { stdout } = await execFileAsync("openclaw", [
+                "wallet", "send",
+                "--to", action.resolvedParams.to,
+                "--amount", String(action.resolvedParams.amount),
+                "--reason", action.resolvedParams.reason || "Brain payment",
+                "--json",
+              ], { timeout: 30000 });
+
+              const startIdx = stdout.indexOf("{");
+              if (startIdx < 0) continue;
+              const endIdx = stdout.lastIndexOf("}");
+              const parsed = JSON.parse(stdout.slice(startIdx, endIdx + 1));
+              if (parsed.error) {
+                api.logger.error(`brain: payment retry failed: ${parsed.error}`);
+                continue;
+              }
+
+              // Update pending action as complete
+              action.status = "complete";
+              action.executedAt = new Date().toISOString();
+              action.result = { txid: parsed.txid || parsed.id, fee: parsed.fee };
+              writeFileSync(`${pendingDir}/${file}`, JSON.stringify(data, null, 2));
+
+              // Send confirmation via Telegram
+              const { sendPaymentConfirmation } = await import("./payment-approval.js");
+              await sendPaymentConfirmation(action, parsed.txid || parsed.id);
+
+              api.logger.info(`brain: payment ${action.id} auto-retried successfully, txid: ${parsed.txid}`);
+            } catch (err) {
+              api.logger.error(`brain: payment retry error for ${file}: ${err}`);
+            }
+          }
+        }
+
+        try {
+          const watcher = watch(eventsDir, (eventType, filename) => {
+            if (filename === "wallet-unlocked") {
+              api.logger.info("brain: detected wallet unlock event, retrying pending payments");
+              // Small delay to let wallet fully initialize
+              setTimeout(() => {
+                retryPendingPayments().catch(err => {
+                  api.logger.error(`brain: retryPendingPayments failed: ${err}`);
+                });
+                // Clean up the trigger file
+                try { unlinkSync(`${eventsDir}/wallet-unlocked`); } catch { /* ok */ }
+              }, 2000);
+            }
+          });
+          (api as any)._walletWatcher = watcher;
+        } catch (err) {
+          api.logger.error(`brain: failed to watch events dir: ${err}`);
+        }
       },
       stop: () => {
+        // Clean up the file watcher
+        try { (api as any)._walletWatcher?.close(); } catch { /* ok */ }
         api.logger.info("brain: stopped");
       },
     });
