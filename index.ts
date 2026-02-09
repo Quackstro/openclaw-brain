@@ -881,43 +881,29 @@ const brainPlugin = {
         async function retryPendingPayments(): Promise<void> {
           if (!existsSync(pendingDir)) return;
           const files = readdirSync(pendingDir).filter(f => f.endsWith(".json"));
+          const execFileAsync = promisify(execFile);
           for (const file of files) {
             try {
               const data = JSON.parse(readFileSync(`${pendingDir}/${file}`, "utf8"));
               const action = data.action;
-              // Only retry proposed/awaiting-unlock actions with a resolved address
+              // Only retry awaiting-unlock actions with a resolved address
               if (!action?.resolvedParams?.to || !action?.resolvedParams?.amount) continue;
-              if (action.status !== "proposed" && action.status !== "awaiting-unlock") continue;
+              if (action.status !== "awaiting-unlock") continue;
 
-              api.logger.info(`brain: retrying payment ${action.id} after wallet unlock`);
-              const { stdout } = await execFileAsync("openclaw", [
-                "wallet", "send",
-                "--to", action.resolvedParams.to,
-                "--amount", String(action.resolvedParams.amount),
-                "--reason", action.resolvedParams.reason || "Brain payment",
+              api.logger.info(`brain: sending auto-execute event for ${action.id} after wallet unlock`);
+
+              // Send system event to the agent via cron (same pattern as auto-approve)
+              await execFileAsync("openclaw", [
+                "cron", "add",
+                "--name", `Brain Retry: ${action.id.slice(0, 8)}`,
+                "--at", new Date(Date.now() + 2000).toISOString(),
+                "--session", "main",
+                "--system-event", `brain:pay:auto-execute:${action.id}`,
+                "--delete-after-run",
                 "--json",
-              ], { timeout: 30000 });
+              ], { timeout: 15000 });
 
-              const startIdx = stdout.indexOf("{");
-              if (startIdx < 0) continue;
-              const endIdx = stdout.lastIndexOf("}");
-              const parsed = JSON.parse(stdout.slice(startIdx, endIdx + 1));
-              if (parsed.error) {
-                api.logger.error(`brain: payment retry failed: ${parsed.error}`);
-                continue;
-              }
-
-              // Update pending action as complete
-              action.status = "complete";
-              action.executedAt = new Date().toISOString();
-              action.result = { txid: parsed.txid || parsed.id, fee: parsed.fee };
-              writeFileSync(`${pendingDir}/${file}`, JSON.stringify(data, null, 2));
-
-              // Send confirmation via Telegram
-              const { sendPaymentConfirmation } = await import("./payment-approval.js");
-              await sendPaymentConfirmation(action, parsed.txid || parsed.id);
-
-              api.logger.info(`brain: payment ${action.id} auto-retried successfully, txid: ${parsed.txid}`);
+              api.logger.info(`brain: auto-execute event queued for ${action.id}`);
             } catch (err) {
               api.logger.error(`brain: payment retry error for ${file}: ${err}`);
             }
