@@ -137,7 +137,7 @@ export async function resolvePaymentEntities(
 
       // Find a match with reasonable similarity
       const best = matches[0];
-      if (best && best.score >= 0.5) {
+      if (best && best.score >= 0.8) {
         result.brainPersonId = best.record.id as string;
 
         // Check contactInfo for DOGE address
