@@ -768,35 +768,44 @@ async function handleTimeSensitiveAction(
 // ============================================================================
 
 /**
- * Execute a payment via `openclaw wallet send` CLI.
- * Returns the txid on success, or throws on failure.
+ * Execute a payment by sending an event to the main agent session via the
+ * gateway API. The agent has access to wallet_send as a tool and will
+ * execute the payment.
+ *
+ * For auto-approved payments, this is fire-and-forget; the agent handles
+ * execution and sends the confirmation to Telegram.
+ *
+ * For now, auto-approve payments are stored as "proposed" and the agent
+ * is notified via a system event to execute them. This avoids the problem
+ * of plugins not being able to call other plugins' tools directly.
  */
 async function executeWalletSend(
+  actionId: string,
   to: string,
   amount: number,
   reason: string,
-): Promise<string> {
-  const { stdout, stderr } = await execFileAsync("openclaw", [
-    "wallet", "send",
-    "--to", to,
-    "--amount", String(amount),
-    "--reason", reason,
-    "--json",
-  ], { timeout: 30000 });
+  config: ActionRouterConfig,
+): Promise<void> {
+  const gatewayUrl = config.gatewayUrl ?? "http://127.0.0.1:18789";
 
-  // Extract JSON from output
-  const startIdx = stdout.indexOf("{");
-  if (startIdx < 0) {
-    throw new Error(`No JSON in wallet send output: ${stdout.slice(0, 200)}`);
+  // Send a system event to the main session telling the agent to execute
+  const eventText = `brain:pay:auto-execute:${actionId}`;
+  const response = await fetch(`${gatewayUrl}/api/sessions/agent:main:main/message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.gatewayToken}`,
+    },
+    body: JSON.stringify({
+      role: "system",
+      content: eventText,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to send auto-execute event: ${response.status} ${body.slice(0, 200)}`);
   }
-  const endIdx = stdout.lastIndexOf("}");
-  const parsed = JSON.parse(stdout.slice(startIdx, endIdx + 1));
-
-  if (parsed.error) {
-    throw new Error(parsed.error);
-  }
-
-  return parsed.txid || parsed.id || "unknown";
 }
 
 // ============================================================================
@@ -881,26 +890,23 @@ async function handlePaymentAction(
       });
 
       try {
-        const txid = await executeWalletSend(
+        await executeWalletSend(
+          action.id,
           resolution.dogeAddress,
           resolution.amount,
           resolution.reason || `Brain payment to ${resolution.recipientName ?? "unknown"}`,
+          config,
         );
 
-        action.status = "complete";
-        action.executedAt = new Date().toISOString();
-        action.result = { txid };
+        // The agent will handle execution and update the pending action file.
+        // We leave status as "proposed" so the agent knows to execute it.
+        action.status = "proposed";
 
         await logAudit(store, {
           action: "action-routed",
           inputId: inboxId,
-          details: `Payment auto-executed: txid=${txid}`,
+          details: `Payment auto-execute event sent to agent: ${resolution.amount} DOGE to ${resolution.dogeAddress}`,
         });
-
-        // Send confirmation to Telegram
-        try {
-          await sendPaymentConfirmation(action, txid, chatId);
-        } catch { /* non-fatal */ }
 
         return {
           action: "payment-auto-executed",
