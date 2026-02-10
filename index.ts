@@ -21,6 +21,7 @@ import { gatherDigestData, formatDigest, type DigestType } from "./digest.js";
 import { checkDnd, toggleDnd, recordSkippedDigest } from "./dnd.js";
 import { createClassifier, type ClassifierFn } from "./classifier.js";
 import { getAuditTrail } from "./audit.js";
+import { DEFAULT_CHAT_ID } from "./constants.js";
 
 // ============================================================================
 // Embedding Provider (same pattern as doc-RAG)
@@ -225,10 +226,11 @@ const brainPlugin = {
       gatewayToken: cfg.classification.apiKey ?? "",
       gatewayUrl: "http://127.0.0.1:18789",
       timezone: "America/New_York",
-      telegramChatId: "8511108690",
+      telegramChatId: DEFAULT_CHAT_ID,
       extractionModel: cfg.classification.model,
       enabled: true,
       embedder,
+      enqueueSystemEvent: api.runtime.system.enqueueSystemEvent,
     };
 
     api.logger.info(
@@ -854,27 +856,34 @@ const brainPlugin = {
       start: async () => {
         api.logger.info(`brain: initialized (db: ${resolvedDbPath})`);
 
-        // Send startup message to Telegram
-        try {
-          const configPath = `${homedir()}/.openclaw/openclaw.json`;
-          const config = JSON.parse(readFileSync(configPath, "utf8"));
-          const botToken = config.channels?.telegram?.botToken;
-          if (botToken) {
-            const chatId = actionRouterConfig.telegramChatId ?? "8511108690";
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ chat_id: chatId, text: "🤖 I am back." }),
-            });
-          }
-        } catch (err) {
-          api.logger.error(`brain: startup message failed: ${err}`);
-        }
-
         // Watch for wallet unlock events and retry pending payments
         const eventsDir = `${homedir()}/.openclaw/events`;
         const pendingDir = `${homedir()}/.openclaw/brain/pending-actions`;
         mkdirSync(eventsDir, { recursive: true });
+
+        // Clean up stale pending action files (terminal states older than 7 days)
+        const STALE_DAYS = 7;
+        try {
+          if (existsSync(pendingDir)) {
+            const files = readdirSync(pendingDir).filter(f => f.endsWith(".json"));
+            let cleaned = 0;
+            for (const file of files) {
+              try {
+                const filePath = `${pendingDir}/${file}`;
+                const data = JSON.parse(readFileSync(filePath, "utf8"));
+                const status = data.action?.status;
+                const createdAt = data.action?.createdAt ? new Date(data.action.createdAt).getTime() : 0;
+                const isTerminal = ["complete", "failed", "dismissed"].includes(status);
+                const isStale = createdAt > 0 && (Date.now() - createdAt) > STALE_DAYS * 86400000;
+                if (isTerminal && isStale) {
+                  unlinkSync(filePath);
+                  cleaned++;
+                }
+              } catch { /* skip */ }
+            }
+            if (cleaned > 0) api.logger.info(`brain: cleaned ${cleaned} stale pending action files`);
+          }
+        } catch { /* non-fatal */ }
 
         let retryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -889,57 +898,66 @@ const brainPlugin = {
               const data = JSON.parse(readFileSync(`${pendingDir}/${file}`, "utf8"));
               const action = data.action;
               if (!action?.resolvedParams?.to || !action?.resolvedParams?.amount) continue;
-              if (action.status !== "awaiting-unlock") continue;
+              // Retry both awaiting-unlock and proposed (stuck due to locked wallet)
+              if (action.status !== "awaiting-unlock" && action.status !== "proposed") continue;
+              if (action.status === "executing") continue; // already being processed
               if (retried.has(action.id)) continue;
 
-              api.logger.info(`brain: sending auto-execute event for ${action.id} after wallet unlock`);
+              api.logger.info(`brain: sending auto-execute event for ${action.id} (was ${action.status}) after wallet unlock`);
               retried.add(action.id);
 
-              // Mark as proposed so it doesn't get retried again
-              action.status = "proposed";
+              // Mark as executing to prevent duplicate sends (race condition guard)
+              action.status = "executing";
               writeFileSync(`${pendingDir}/${file}`, JSON.stringify(data, null, 2));
 
-              await execFileAsync("openclaw", [
-                "cron", "add",
-                "--name", `Brain Retry: ${action.id.slice(0, 8)}`,
-                "--at", new Date(Date.now() + 3000).toISOString(),
-                "--session", "main",
-                "--system-event", `brain:pay:auto-execute:${action.id}`,
-                "--delete-after-run",
-                "--json",
-              ], { timeout: 15000 });
+              api.runtime.system.enqueueSystemEvent(
+                `brain:pay:auto-execute:${action.id}`,
+                { sessionKey: "agent:main:main" },
+              );
 
-              api.logger.info(`brain: auto-execute event queued for ${action.id}`);
+              api.logger.info(`brain: auto-execute event enqueued for ${action.id}`);
             } catch (err) {
               api.logger.error(`brain: payment retry error for ${file}: ${err}`);
             }
           }
         }
 
+        // Watch for wallet-unlocked event file.
+        // Uses fs.watch as primary, with a 30s polling fallback for unreliable filesystems.
+        function handleUnlockEvent(): void {
+          if (retryDebounceTimer) return;
+          api.logger.info("brain: detected wallet unlock event, retrying pending payments");
+          retryDebounceTimer = setTimeout(() => {
+            retryDebounceTimer = null;
+            retryPendingPayments().catch(err => {
+              api.logger.error(`brain: retryPendingPayments failed: ${err}`);
+            });
+            try { unlinkSync(`${eventsDir}/wallet-unlocked`); } catch { /* ok */ }
+          }, 2000);
+        }
+
         try {
-          const watcher = watch(eventsDir, (eventType, filename) => {
-            if (filename === "wallet-unlocked") {
-              // Debounce: fs.watch fires multiple events for a single file write.
-              // Only process once within a 3-second window.
-              if (retryDebounceTimer) return;
-              api.logger.info("brain: detected wallet unlock event, retrying pending payments");
-              retryDebounceTimer = setTimeout(() => {
-                retryDebounceTimer = null;
-                retryPendingPayments().catch(err => {
-                  api.logger.error(`brain: retryPendingPayments failed: ${err}`);
-                });
-                try { unlinkSync(`${eventsDir}/wallet-unlocked`); } catch { /* ok */ }
-              }, 2000);
-            }
+          const watcher = watch(eventsDir, (_eventType, filename) => {
+            if (filename === "wallet-unlocked") handleUnlockEvent();
           });
           (api as any)._walletWatcher = watcher;
         } catch (err) {
-          api.logger.error(`brain: failed to watch events dir: ${err}`);
+          api.logger.error(`brain: failed to watch events dir (polling fallback active): ${err}`);
         }
+
+        // Polling fallback: check every 30s in case fs.watch misses events
+        const pollInterval = setInterval(() => {
+          try {
+            if (existsSync(`${eventsDir}/wallet-unlocked`)) {
+              handleUnlockEvent();
+            }
+          } catch { /* non-fatal */ }
+        }, 30000);
+        (api as any)._walletPollInterval = pollInterval;
       },
       stop: () => {
-        // Clean up the file watcher
         try { (api as any)._walletWatcher?.close(); } catch { /* ok */ }
+        try { clearInterval((api as any)._walletPollInterval); } catch { /* ok */ }
         api.logger.info("brain: stopped");
       },
     });

@@ -27,6 +27,7 @@ import { resolvePaymentEntities, type PaymentResolution } from "./payment-resolv
 import { createPaymentAction } from "./payment-action.js";
 import { evaluatePaymentPolicy, type PolicyDecision } from "./action-policy.js";
 import { sendPaymentApproval, sendPaymentConfirmation, sendPaymentFailure } from "./payment-approval.js";
+import { DEFAULT_CHAT_ID } from "./constants.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -52,6 +53,8 @@ export interface ActionRouterConfig {
   extractionModel?: string;  // default: claude-haiku-3.5
   enabled?: boolean;         // default: true
   embedder?: EmbeddingProvider; // needed for payment entity resolution
+  /** Inject a system event into a session (avoids CLI which can hang). */
+  enqueueSystemEvent?: (text: string, options: { sessionKey: string }) => void;
 }
 
 // ============================================================================
@@ -311,10 +314,6 @@ function localToUtcMs(dateStr: string, timeStr: string, timezone: string): numbe
   const [year, month, day] = dateStr.split("-").map(Number);
   const [hour, minute] = timeStr.split(":").map(Number);
 
-  // Start with a UTC guess: interpret date/time as if it were UTC
-  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-
-  // Format that UTC guess in the target timezone to see what the offset is
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
@@ -325,26 +324,38 @@ function localToUtcMs(dateStr: string, timeStr: string, timezone: string): numbe
     second: "2-digit",
     hour12: false,
   });
-  const parts = formatter.formatToParts(new Date(utcGuess));
-  const getPart = (type: string) =>
-    parseInt(parts.find((p) => p.type === type)?.value ?? "0");
 
-  const tzHour = getPart("hour") === 24 ? 0 : getPart("hour");
-  const tzTimeUtc = Date.UTC(
-    getPart("year"),
-    getPart("month") - 1,
-    getPart("day"),
-    tzHour,
-    getPart("minute"),
-    0,
-    0,
-  );
+  function getOffset(utcMs: number): number {
+    const parts = formatter.formatToParts(new Date(utcMs));
+    const getPart = (type: string) =>
+      parseInt(parts.find((p) => p.type === type)?.value ?? "0");
+    const tzHour = getPart("hour") === 24 ? 0 : getPart("hour");
+    const tzTimeUtc = Date.UTC(
+      getPart("year"),
+      getPart("month") - 1,
+      getPart("day"),
+      tzHour,
+      getPart("minute"),
+      0,
+      0,
+    );
+    return tzTimeUtc - utcMs;
+  }
 
-  // The offset is how much the timezone-formatted time differs from the UTC guess
-  const offset = tzTimeUtc - utcGuess;
+  // First pass: use a naive UTC guess to find the approximate offset
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  const offset1 = getOffset(utcGuess);
+  const candidate = utcGuess - offset1;
 
-  // Subtract the offset to convert local → UTC
-  return utcGuess - offset;
+  // Second pass: refine with the offset at the candidate time.
+  // This handles DST transitions where the offset at utcGuess differs
+  // from the offset at the actual target time (e.g., spring forward).
+  const offset2 = getOffset(candidate);
+  if (offset1 !== offset2) {
+    return utcGuess - offset2;
+  }
+
+  return candidate;
 }
 
 // ============================================================================
@@ -415,7 +426,9 @@ function buildAgentMessage(
   chatId: string,
   enableNag: boolean,
 ): string {
-  const scriptCmd = `node ${REMINDER_SCRIPT} --text "⏰ Reminder: ${reminderText.replace(/"/g, '\\"')}" --nag-job "${nagJobId}" --chat-id "${chatId}"`;
+  // Escape shell metacharacters in reminder text to prevent injection
+  const safeText = reminderText.replace(/["`$\\!]/g, "\\$&");
+  const scriptCmd = `node ${REMINDER_SCRIPT} --text "⏰ Reminder: ${safeText}" --nag-job "${nagJobId}" --chat-id "${chatId}"`;
 
   let msg = `Execute the following commands using the exec tool, then reply with ONLY: NO_REPLY\n\n`;
   msg += `Command 1: ${scriptCmd}\n`;
@@ -453,7 +466,7 @@ async function createPersistentReminder(
   config: ActionRouterConfig,
 ): Promise<{ triggerJobId: string | null; nagJobId: string; name: string } | null> {
   const timezone = config.timezone ?? "America/New_York";
-  const chatId = config.telegramChatId ?? "8511108690";
+  const chatId = config.telegramChatId ?? DEFAULT_CHAT_ID;
   const reminderText = extraction.reminderText || "Brain reminder";
   const baseName = reminderText.slice(0, 50);
 
@@ -783,20 +796,26 @@ async function executeWalletSend(
   actionId: string,
   config: ActionRouterConfig,
 ): Promise<void> {
-  // Create a one-shot cron job that fires immediately, injecting a system event
-  // into the main agent session. The agent handles wallet_send execution.
+  // Inject a system event into the main agent session. The agent handles wallet_send execution.
   const eventText = `brain:pay:auto-execute:${actionId}`;
-  const { stdout } = await execFileAsync("openclaw", [
-    "cron", "add",
-    "--name", `Brain Auto-Pay: ${actionId.slice(0, 8)}`,
-    "--at", new Date(Date.now() + 2000).toISOString(),
-    "--session", "main",
-    "--system-event", eventText,
-    "--delete-after-run",
-    "--json",
-  ], { timeout: 15000 });
 
-  console.log(`[brain] payment auto-execute cron created for ${actionId}: ${stdout.slice(0, 200)}`);
+  if (config.enqueueSystemEvent) {
+    // Direct in-process injection — no CLI, no hanging
+    config.enqueueSystemEvent(eventText, { sessionKey: "agent:main:main" });
+    console.log(`[brain] payment auto-execute event enqueued for ${actionId}`);
+  } else {
+    // Fallback to CLI (may hang — legacy path)
+    const { stdout } = await execFileAsync("openclaw", [
+      "cron", "add",
+      "--name", `Brain Auto-Pay: ${actionId.slice(0, 8)}`,
+      "--at", new Date(Date.now() + 10000).toISOString(),
+      "--session", "main",
+      "--system-event", eventText,
+      "--delete-after-run",
+      "--json",
+    ], { timeout: 15000 });
+    console.log(`[brain] payment auto-execute cron created for ${actionId}: ${stdout.slice(0, 200)}`);
+  }
 }
 
 // ============================================================================
@@ -814,7 +833,7 @@ async function handlePaymentAction(
   inboxId: string,
   config: ActionRouterConfig,
 ): Promise<ActionResult> {
-  const chatId = config.telegramChatId ?? "8511108690";
+  const chatId = config.telegramChatId ?? DEFAULT_CHAT_ID;
 
   // Need embedder for entity resolution
   if (!config.embedder) {
@@ -873,7 +892,6 @@ async function handlePaymentAction(
         return { action: "payment-failed", details: "Cannot auto-execute: missing address or amount" };
       }
 
-      action.status = "executing";
       await logAudit(store, {
         action: "action-routed",
         inputId: inboxId,

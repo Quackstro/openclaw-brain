@@ -6,14 +6,11 @@
  * wallet transaction history.
  */
 
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { promisify } from "node:util";
 
 import type { BrainStore } from "./store.js";
 import type { EmbeddingProvider } from "./schemas.js";
-
-const execFileAsync = promisify(execFile);
+import { DOGE_ADDRESS_RE, MAX_PAYMENT_AMOUNT } from "./constants.js";
 
 // ============================================================================
 // Types
@@ -49,24 +46,18 @@ interface WalletTx {
   [key: string]: unknown;
 }
 
-// ============================================================================
-// DOGE address regex
-// ============================================================================
-
-const DOGE_ADDRESS_RE = /\bD[1-9A-HJ-NP-Za-km-z]{24,33}\b/;
+// Constants imported from ./constants.js
 
 // ============================================================================
-// Wallet history helper
+// Wallet history helper (cached per resolution call)
 // ============================================================================
 
-async function getWalletHistory(): Promise<WalletTx[]> {
-  // Read directly from the wallet audit log (JSONL file).
-  // The CLI `openclaw wallet history` doesn't exist; the wallet_history
-  // tool is agent-only. The audit log is the source of truth.
+function loadWalletHistory(): WalletTx[] {
   try {
     const auditPath = `${process.env.HOME || "/home/clawdbot"}/.openclaw/doge/audit/audit.jsonl`;
     const lines = readFileSync(auditPath, "utf8").trim().split("\n");
     const txs: WalletTx[] = [];
+    let malformed = 0;
     for (const line of lines) {
       if (!line) continue;
       try {
@@ -81,7 +72,12 @@ async function getWalletHistory(): Promise<WalletTx[]> {
             reason: entry.reason || "",
           });
         }
-      } catch { /* skip malformed lines */ }
+      } catch {
+        malformed++;
+      }
+    }
+    if (malformed > 0) {
+      console.warn(`[brain] payment-resolver: ${malformed} malformed audit log entries skipped`);
     }
     console.log(`[brain] payment-resolver: loaded ${txs.length} send transactions from wallet audit log`);
     return txs;
@@ -92,16 +88,75 @@ async function getWalletHistory(): Promise<WalletTx[]> {
 }
 
 // ============================================================================
+// Address resolution helper (shared by primary + fallback search)
+// ============================================================================
+
+async function resolveAddressFromPerson(
+  personRecord: Record<string, unknown>,
+  store: BrainStore,
+  embedder: EmbeddingProvider,
+  history: WalletTx[],
+): Promise<string | null> {
+  // 1. Check contactInfo directly
+  const contactInfo = (personRecord.contactInfo as string) || "";
+  const contactMatch = contactInfo.match(DOGE_ADDRESS_RE);
+  if (contactMatch) return contactMatch[0];
+
+  // 2. Search finance/admin buckets for this person's DOGE address
+  const personName = ((personRecord.name as string) || "").toLowerCase();
+  if (!personName) return null;
+
+  const cryptoBuckets = ["finance", "admin"] as const;
+  for (const bucket of cryptoBuckets) {
+    try {
+      const query = `${personName} DOGE address wallet`;
+      const vec = await embedder.embed(query);
+      const hits = await store.search(bucket, vec, 5);
+      for (const hit of hits) {
+        const record = hit.record;
+        const fieldsToCheck = [
+          record.entries, record.notes, record.title, record.summary,
+          record.nextActions, record.tags, record.contactInfo, record.description,
+        ];
+        for (const field of fieldsToCheck) {
+          if (!field) continue;
+          const str = typeof field === "string" ? field : JSON.stringify(field);
+          const match = str.match(DOGE_ADDRESS_RE);
+          if (match) {
+            const strLower = str.toLowerCase();
+            if (strLower.includes(personName) || hit.score >= 0.7) {
+              return match[0];
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-fatal, continue to next bucket
+    }
+  }
+
+  // 3. Last resort: search wallet transaction history by name
+  for (const tx of history) {
+    const txMemo = ((tx.memo || tx.reason || "") as string).toLowerCase();
+    if (txMemo.includes(personName) && tx.address) {
+      return tx.address;
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
 // Main resolver
 // ============================================================================
 
 /**
  * Resolve payment entities from classifier-extracted parameters.
  *
- * Resolution scoring:
- * - 0.33 for having a resolved DOGE address
- * - 0.33 for having an amount
- * - 0.34 for having a reason
+ * Resolution scoring (weighted by importance):
+ * - 0.50 for having a resolved DOGE address
+ * - 0.30 for having an amount
+ * - 0.20 for having a reason
  */
 export async function resolvePaymentEntities(
   params: PaymentParams,
@@ -122,94 +177,43 @@ export async function resolvePaymentEntities(
     errors: [],
   };
 
+  // Load wallet history once for the entire resolution
+  const history = loadWalletHistory();
+
   // 1. Check for raw DOGE address in text
   const addrMatch = rawText.match(DOGE_ADDRESS_RE);
   if (addrMatch) {
     result.dogeAddress = addrMatch[0];
-    result.resolutionScore += 0.33;
+    result.resolutionScore += 0.50;
   }
 
   // 2. Resolve recipient from people bucket
   if (!result.dogeAddress && result.recipientName) {
     try {
+      // Primary search
       const vector = await embedder.embed(result.recipientName);
       const matches = await store.search("people", vector, 3);
-
-      // Find a match with reasonable similarity
       const best = matches[0];
-      if (best && best.score >= 0.8) {
-        result.brainPersonId = best.record.id as string;
 
-        // Check contactInfo for DOGE address
-        const contactInfo = (best.record.contactInfo as string) || "";
-        const contactAddrMatch = contactInfo.match(DOGE_ADDRESS_RE);
-        if (contactAddrMatch) {
-          result.dogeAddress = contactAddrMatch[0];
-          result.resolutionScore += 0.33;
+      // Fallback: broader search if primary misses
+      let matched = best && best.score >= 0.6 ? best : null;
+      if (!matched) {
+        const fallbackVector = await embedder.embed(`${result.recipientName} person profile`);
+        const fallbackMatches = await store.search("people", fallbackVector, 3);
+        const fallbackBest = fallbackMatches[0];
+        if (fallbackBest && fallbackBest.score >= 0.5) {
+          matched = fallbackBest;
         }
+      }
 
-        // If still no address, search crypto-related buckets (finance, admin)
-        // for records mentioning this person + a DOGE address
-        if (!result.dogeAddress) {
-          const personName = (best.record.name as string || "").toLowerCase();
-          const cryptoBuckets = ["finance", "admin"] as const;
-          for (const bucket of cryptoBuckets) {
-            if (result.dogeAddress) break;
-            try {
-              const query = `${personName} DOGE address wallet`;
-              const vec = await embedder.embed(query);
-              const hits = await store.search(bucket, vec, 5);
-              for (const hit of hits) {
-                // Scan all string fields for a DOGE address
-                const record = hit.record;
-                const fieldsToCHeck = [
-                  record.entries,
-                  record.notes,
-                  record.title,
-                  record.summary,
-                  record.nextActions,
-                  record.tags,
-                  record.contactInfo,
-                  record.description,
-                ];
-                for (const field of fieldsToCHeck) {
-                  if (!field) continue;
-                  const str = typeof field === "string" ? field : JSON.stringify(field);
-                  const match = str.match(DOGE_ADDRESS_RE);
-                  if (match) {
-                    // Verify this record is related to the recipient
-                    const strLower = str.toLowerCase();
-                    if (strLower.includes(personName) || hit.score >= 0.7) {
-                      result.dogeAddress = match[0];
-                      result.resolutionScore += 0.33;
-                      break;
-                    }
-                  }
-                }
-                if (result.dogeAddress) break;
-              }
-            } catch {
-              // Non-fatal, continue to next bucket
-            }
-          }
-        }
-
-        // Last resort: search wallet transaction history by name
-        if (!result.dogeAddress) {
-          const personName = (best.record.name as string || "").toLowerCase();
-          const history = await getWalletHistory();
-          for (const tx of history) {
-            const txMemo = ((tx.memo || tx.reason || "") as string).toLowerCase();
-            if (txMemo.includes(personName) && tx.address) {
-              result.dogeAddress = tx.address;
-              result.resolutionScore += 0.33;
-              break;
-            }
-          }
-
-          if (!result.dogeAddress) {
-            result.errors.push(`Found ${best.record.name} in Brain but no DOGE address available`);
-          }
+      if (matched) {
+        result.brainPersonId = matched.record.id as string;
+        const address = await resolveAddressFromPerson(matched.record, store, embedder, history);
+        if (address) {
+          result.dogeAddress = address;
+          result.resolutionScore += 0.50;
+        } else {
+          result.errors.push(`Found ${matched.record.name} in Brain but no DOGE address available`);
         }
       } else {
         result.errors.push("Recipient not found in Brain");
@@ -221,18 +225,21 @@ export async function resolvePaymentEntities(
     result.errors.push("Missing recipient");
   }
 
-  // 3. Parse amount
+  // 3. Parse amount (with safety cap)
   if (params.amount) {
     const parsed = parseFloat(params.amount);
     if (!isNaN(parsed) && parsed > 0) {
-      result.amount = parsed;
-      result.resolutionScore += 0.33;
+      if (parsed > MAX_PAYMENT_AMOUNT) {
+        result.errors.push(`Amount ${parsed} DOGE exceeds safety limit of ${MAX_PAYMENT_AMOUNT} DOGE`);
+      } else {
+        result.amount = parsed;
+        result.resolutionScore += 0.30;
+      }
     }
   }
 
   // If no amount, try to find suggested amount from history
   if (result.amount === null && result.dogeAddress) {
-    const history = await getWalletHistory();
     const pastAmounts = history
       .filter((tx) => tx.address === result.dogeAddress && tx.type === "send")
       .map((tx) => tx.amount)
@@ -249,12 +256,11 @@ export async function resolvePaymentEntities(
 
   // 4. Reason
   if (result.reason) {
-    result.resolutionScore += 0.34;
+    result.resolutionScore += 0.20;
   }
 
-  // 5. Check if first-time recipient
+  // 5. Check if first-time recipient (using cached history)
   if (result.dogeAddress) {
-    const history = await getWalletHistory();
     const hasPriorSend = history.some(
       (tx) => tx.address === result.dogeAddress && tx.type === "send",
     );

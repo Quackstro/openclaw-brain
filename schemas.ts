@@ -283,14 +283,23 @@ export interface NeedsReviewEntry {
 // Action interface (for payment actions, etc.)
 // ============================================================================
 
+/** Typed resolved params for payment actions. */
+export interface PaymentResolvedParams {
+  to: string | null;
+  amount: number | null;
+  currency: string;
+  reason: string;
+  recipientName: string | null;
+}
+
 /** A proposed or executed action attached to a bucket record. */
 export interface Action {
   id: string;
   type: string;
   confidence: number;
   params: Record<string, string>;
-  resolvedParams: Record<string, unknown>;
-  status: "proposed" | "approved" | "executing" | "complete" | "failed" | "dismissed";
+  resolvedParams: PaymentResolvedParams | Record<string, unknown>;
+  status: "proposed" | "approved" | "executing" | "complete" | "failed" | "dismissed" | "awaiting-unlock" | "awaiting-confirmation";
   gating: "auto" | "manual";
   executionScore: number;
   pluginId: string;

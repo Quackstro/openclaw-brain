@@ -20,7 +20,7 @@ export function createPaymentAction(
   resolution: PaymentResolution,
 ): Action {
   const proposedAction = classification.proposedActions?.[0];
-  const classifierConfidence = proposedAction?.confidence ?? 0.8;
+  const classifierConfidence = proposedAction?.confidence ?? 0.5;
   const executionScore = Math.min(1.0, classifierConfidence * resolution.resolutionScore);
 
   return {

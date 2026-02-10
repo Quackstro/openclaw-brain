@@ -10,23 +10,27 @@ import { homedir } from "node:os";
 
 import type { Action } from "./schemas.js";
 import type { PolicyDecision } from "./action-policy.js";
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const DEFAULT_CHAT_ID = "8511108690";
+import { DEFAULT_CHAT_ID } from "./constants.js";
 
 // ============================================================================
 // Telegram helpers
 // ============================================================================
 
+let cachedBotToken: string | null = null;
+
 async function getBotToken(): Promise<string> {
+  if (cachedBotToken) return cachedBotToken;
   const configPath = `${homedir()}/.openclaw/openclaw.json`;
   const config = JSON.parse(await readFile(configPath, "utf8"));
   const token = config.channels?.telegram?.botToken;
   if (!token) throw new Error("No telegram.botToken in config");
+  cachedBotToken = token;
   return token;
+}
+
+/** Escape Telegram MarkdownV2 special characters in user-provided text. */
+function escapeMarkdown(text: string): string {
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, "\\$&");
 }
 
 async function sendTelegramMessage(
@@ -40,7 +44,8 @@ async function sendTelegramMessage(
   const body: Record<string, unknown> = {
     chat_id: chatId,
     text,
-    parse_mode: "Markdown",
+    // Using plain text (no parse_mode) to avoid Markdown escaping issues.
+    // Formatting is done with plain Unicode characters instead.
   };
 
   if (inlineKeyboard) {
@@ -56,6 +61,9 @@ async function sendTelegramMessage(
   if (!res.ok) {
     const errBody = await res.text();
     console.error(`[brain] Telegram send failed: ${res.status} ${errBody.slice(0, 300)}`);
+    throw new Error(`Telegram send failed: ${res.status} ${errBody.slice(0, 200)}`);
+  } else {
+    console.log(`[brain] Telegram message sent to ${chatId}`);
   }
 }
 
@@ -86,16 +94,16 @@ export async function sendPaymentApproval(
 
   let warning = "";
   if (policyDecision === "prompt-warning") {
-    warning = "\n\n*Warning:* Low confidence score. Please verify details carefully.";
+    warning = "\n\n⚠️ Warning: Low confidence score. Please verify details carefully.";
   }
 
   const text = [
-    "Brain Payment Proposal",
+    "💸 Brain Payment Proposal",
     "",
-    `To: ${recipientName} (${shortAddr})`,
-    `Amount: ${amount} ${currency}`,
-    `Reason: ${reason}`,
-    `Score: ${score}%`,
+    `👤 To: ${recipientName} (${shortAddr})`,
+    `💰 Amount: ${amount} ${currency}`,
+    `📝 Reason: ${reason}`,
+    `📊 Score: ${score}%`,
     warning,
   ].join("\n");
 
@@ -133,11 +141,11 @@ export async function sendPaymentConfirmation(
     : txid;
 
   const text = [
-    "Payment Sent",
+    "✅ Payment Sent",
     "",
-    `To: ${recipientName}`,
-    `Amount: ${amount} ${currency}`,
-    `TxID: \`${shortTxid}\``,
+    `👤 To: ${recipientName}`,
+    `💰 Amount: ${amount} ${currency}`,
+    `🔗 TxID: ${shortTxid}`,
   ].join("\n");
 
   await sendTelegramMessage(target, text);
@@ -157,8 +165,6 @@ export async function sendPaymentFailure(
   const recipientName = (rp.recipientName as string) || "Unknown";
   const amount = rp.amount != null ? Number(rp.amount).toFixed(2) : "?";
 
-  // Auto-retry is handled via file watcher in index.ts (watches ~/.openclaw/events/wallet-unlocked).
-  // The retry button below is a fallback in case the watcher misses the event.
   const isLocked = /locked|unlock/i.test(error);
   const isInsufficientFunds = /insufficient funds/i.test(error);
 
@@ -172,7 +178,8 @@ export async function sendPaymentFailure(
       `👤 To: ${recipientName}`,
       `💰 Amount: ${amount} DOGE`,
       "",
-      "Send `/wallet unlock` first, then tap Retry.",
+      "Send /wallet unlock first, then tap Retry.",
+      "(Auto-retry will fire when wallet is unlocked.)",
     ].join("\n");
     keyboard = [[
       { text: "🔓 Retry", callback_data: `brain:pay:approve:${action.id}` },
@@ -185,7 +192,7 @@ export async function sendPaymentFailure(
       `👤 To: ${recipientName}`,
       `💰 Amount: ${amount} DOGE`,
       "",
-      "Not enough confirmed funds. Recent transactions are still pending confirmation (typically 1-2 minutes).",
+      "Not enough confirmed funds. Recent transactions are still pending (typically 1-2 min).",
       "Tap Retry once they confirm.",
     ].join("\n");
     keyboard = [[
