@@ -464,6 +464,22 @@ After classification and bucket routing, Brain's **action router** inspects each
 | **todo** | Tags the item and logs it to the audit trail. |
 | **purchase** | Tags the item with amount info from extracted entities. |
 | **call** | Tags the item with contact info from extracted entities. |
+| **payment** | Resolves recipient from Brain's people bucket, creates approval UI with Approve/Edit/Dismiss buttons. Auto-executes for ≤1 DOGE to known recipients. |
+
+#### Payment Actions
+
+When Brain detects a payment intent (e.g., "send 5 DOGE to Alice"), the action router:
+
+1. **Resolves the recipient** — Searches the people bucket for a matching contact with a DOGE address
+2. **Scores confidence** — Based on recipient match quality, amount, and context
+3. **Routes by policy**:
+   - **Auto-execute** (score ≥ 0.9, amount ≤ 1 DOGE, known recipient): Sends immediately via `wallet_send`
+   - **Propose** (score ≥ 0.5): Shows Telegram approval UI with Approve / Edit / Dismiss buttons
+   - **Reject** (score < 0.5 or unknown recipient): Notifies user of resolution failure
+4. **Race guard** — Prevents duplicate sends from rapid button taps (status checked before and after wallet call)
+5. **Wallet lock handling** — If wallet is locked, queues action as `awaiting-unlock` with retry on unlock event
+
+Pending actions are stored as JSON in `~/.openclaw/brain/pending-actions/`.
 
 Time extraction uses an LLM call to parse natural language like "next Tuesday at 3pm" or "every Monday morning" into precise dates and cron expressions.
 
@@ -649,9 +665,10 @@ Brain is actively evolving. Here's what's coming:
 - [ ] **Voice note transcription**: Whisper integration for automatic voice-to-text capture
 
 ### v2.5: Intelligence
+- [x] **Payment actions**: DOGE-powered actions via the wallet plugin. Drops like "send 5 DOGE to Alice" trigger recipient resolution, approval UI with inline buttons, and wallet_send execution with race-guard protection.
 - [ ] **Custom buckets**: Add, remove, split, and merge buckets to fit your workflow. Define custom fields, classification behavior, and routing rules per bucket. Your Brain, your structure.
 - [ ] **Drops as work orders**: Use drops to trigger dev_task (code/doc changes) and research (web search + summary) actions, with tiered gating for safety
-- [ ] **Payment actions**: DOGE-powered actions via the wallet plugin. Drops like "tip @alice 50 DOGE" trigger invoice creation, payment, and verification
+- [x] ~~**Payment actions**~~: *(Shipped in v2.5 — see above)*
 - [ ] **Hybrid search**: Combine keyword + semantic search for better results
 - [ ] **Cross-bucket links**: Automatically detect and surface relationships between items (e.g., a person linked to a project)
 - [ ] **Learning from corrections**: When you move a misclassified item, Brain learns and improves over time
