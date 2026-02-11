@@ -141,7 +141,26 @@ Brain is an OpenClaw plugin that captures unstructured thoughts and automaticall
 
 ---
 
-### 2.5.0a · Drops as Work Orders (dev_task + research Actions)
+### 2.5.0a · Bucket Hint Tags (Classification Override)
+**Description:** Add a second category of bracket tags — **bucket hints** like `[finance]`, `[health]`, `[project]`, `[people]`, `[admin]`, `[idea]`, `[document]`, `[goal]` — that override the classifier's bucket assignment and bypass the confidence threshold. When a user drops `[finance] paid the electric bill`, the item skips classification routing and goes directly to the finance bucket with confidence 1.0. This is the **input mechanism** that feeds the self-learning loop (2.5.3 + 2.5.4): every bucket hint is also recorded as a correction example for few-shot injection.
+
+**Implementation:**
+- `tag-parser.ts`: Add bucket tag detection alongside existing intent tags
+- `commands/drop.ts`: When a bucket hint is present, override `classification.bucket` and set `confidence = 1.0` before routing
+- `router.ts`: Item bypasses the confidence threshold check, goes straight to the target bucket
+- Record the `{rawText, correctBucket, embedding}` in the corrections table (2.5.4)
+
+**User experience:** When an item lands in `needs_review`, the system prompts the user to re-drop with a bucket hint tag (e.g., "Try: `[finance] paid the electric bill`"). Over time, the few-shot examples from these hints improve the classifier so hints become unnecessary for similar inputs.
+
+**Why it matters:** Gives users an immediate escape hatch from `needs_review` while simultaneously teaching the system. Bridges the gap between manual correction and autonomous learning.
+
+**Complexity:** S-M
+
+**Dependencies:** None standalone; feeds into 2.5.3 and 2.5.4 for the learning loop.
+
+---
+
+### 2.5.0b · Drops as Work Orders (dev_task + research Actions)
 **Description:** Extend the action router with two new action types. `dev_task` dispatches file edits, code changes, or documentation updates to a sub-agent, with tiered gating: read-only tasks auto-approve, destructive ops require owner confirmation. `research` dispatches web search + summarization, auto-approved since it's read-only. Both actions resolve back to the originating Brain item with status and result summary.
 
 **Why it matters:** Turns Brain from a passive capture tool into an active executor. "Add error handling to auth.ts" becomes a drop that actually does the work.
@@ -152,7 +171,7 @@ Brain is an OpenClaw plugin that captures unstructured thoughts and automaticall
 
 ---
 
-### 2.5.0b · Payment Actions (DOGE Integration)
+### 2.5.0c · Payment Actions (DOGE Integration)
 **Description:** Integrate with the DOGE wallet plugin to enable payment-triggered drops. "Tip @alice 50 DOGE for the logo" creates an invoice, executes payment after confirmation, and verifies on-chain. Supports invoice creation, direct sends, and payment verification via OP_RETURN. Gated by spending policy tiers already defined in the wallet plugin.
 
 **Why it matters:** Combines autonomous memory with autonomous payments. Agent-to-agent commerce starts with a simple drop.
@@ -188,24 +207,36 @@ Example: Drop "Meeting with Sarah about Project Alpha" → creates person record
 ---
 
 ### 2.5.3 · Smarter Classification with Few-Shot Examples
-**Description:** The classifier currently uses a zero-shot prompt. Maintain a small bank of "gold standard" examples (correct classifications) and include the most relevant 3-5 as few-shot examples in the classification prompt. Automatically build this bank from user corrections via `brain_fix` moves.
+**Description:** The classifier currently uses a zero-shot prompt. Maintain a small bank of "gold standard" examples (correct classifications) and include the most relevant 3-5 as few-shot examples in the classification prompt. Automatically build this bank from: (a) user corrections via `brain_fix` moves, (b) bucket hint tags from 2.5.0a, (c) approved `needs_review` resolutions.
 
-**Why it matters:** Few-shot examples dramatically improve classification accuracy, especially for edge cases.
+**Self-learning flow:**
+1. User drops `[finance] paid the electric bill` → stored as correction `{rawText: "paid the electric bill", correctBucket: "finance", embedding}`
+2. Next time someone drops "paid the water bill", vector search finds the similar correction
+3. Correction injected as few-shot example: `"paid the electric bill" → finance`
+4. Classifier sees the pattern → returns `finance` with high confidence → no more `needs_review`
+
+**Why it matters:** Few-shot examples dramatically improve classification accuracy, especially for edge cases. The system gets smarter with every correction, bucket hint, and manual fix.
 
 **Complexity:** M
 
-**Dependencies:** A small `examples` table or JSON file storing (rawText, correctBucket) pairs.
+**Dependencies:** A `corrections` LanceDB table storing `{rawText, correctBucket, embedding, timestamp}`. Fed by 2.5.0a (bucket hints) and 2.5.4 (fix corrections).
 
 ---
 
 ### 2.5.4 · Learning from Corrections (Classification Feedback Loop)
-**Description:** When a user moves an item via `brain_fix → <bucket>`, record the correction as a training signal. Use these corrections to: (a) build few-shot examples, (b) adjust confidence thresholds per bucket, (c) identify systematic misclassification patterns.
+**Description:** When a user moves an item via `brain_fix → <bucket>`, record the correction as a training signal. Use these corrections to: (a) build few-shot examples (2.5.3), (b) adjust confidence thresholds per bucket, (c) identify systematic misclassification patterns. Also captures corrections from bucket hint tags (2.5.0a) and `needs_review` approvals.
 
-**Why it matters:** The system gets smarter over time instead of making the same mistakes. This is what Mem does well — it learns your categorization preferences.
+**Correction sources (all feed the same `corrections` table):**
+- Bucket hint tags: `[finance] paid electric bill` (2.5.0a)
+- Manual fixes: `brain_fix → health`
+- Needs-review resolutions: approving a suggested bucket
+- Audit trail: retroactive extraction of past corrections
+
+**Why it matters:** The system gets smarter over time instead of making the same mistakes. This is what Mem does well — it learns your categorization preferences. Combined with 2.5.0a (bucket hints as the input mechanism) and 2.5.3 (few-shot injection as the output mechanism), this forms a complete self-learning loop.
 
 **Complexity:** M
 
-**Dependencies:** 2.5.3 (few-shot bank). Correction tracking already partially exists in audit trail.
+**Dependencies:** 2.5.3 (few-shot bank), 2.5.0a (bucket hints as correction source). Correction tracking already partially exists in audit trail.
 
 ---
 
@@ -391,8 +422,9 @@ Example: Drop "Meeting with Sarah about Project Alpha" → creates person record
 | 2.1.6 Classification feedback | High | S | **P0** |
 | 2.1.5 Configurable digests | Medium | S | **P0** |
 | 2.1.7 Needs-review workflow | High | M | **P0** |
-| 2.5.0a Drops as work orders | Very High | L | **P1** |
-| 2.5.0b Payment actions | High | L | **P1** |
+| 2.5.0a Bucket hint tags | High | S-M | **P0** |
+| 2.5.0b Drops as work orders | Very High | L | **P1** |
+| 2.5.0c Payment actions | High | L | **P1** |
 | 2.5.1 Hybrid search | High | M | **P1** |
 | 2.5.2 Cross-bucket links | Very High | L | **P1** |
 | 2.5.4 Learning from corrections | High | M | **P1** |
@@ -412,8 +444,8 @@ Example: Drop "Meeting with Sarah about Project Alpha" → creates person record
 
 **Sprint 1 (v2.1):** 2.1.1, 2.1.2, 2.1.3, 2.1.5, 2.1.6 — Quick wins, all S complexity
 **Sprint 2 (v2.1.5):** 2.1.4, 2.1.7, 2.1.8 — Complete QoL layer
-**Sprint 3 (v2.5-alpha):** 2.5.1, 2.5.9, 2.5.6 — Search & classification improvements
-**Sprint 4 (v2.5-beta):** 2.5.2, 2.5.3, 2.5.4 — Graph links & learning loop
+**Sprint 3 (v2.5-alpha):** 2.5.0a, 2.5.1, 2.5.9, 2.5.6 — Bucket hints, search & classification improvements
+**Sprint 4 (v2.5-beta):** 2.5.3, 2.5.4, 2.5.2 — Self-learning loop (few-shot + corrections) & graph links
 **Sprint 5 (v2.5):** 2.5.5, 2.5.7, 2.5.8 — Intelligence layer
 **Sprint 6+ (v3.0):** Calendar → Proactive recall → Spaced repetition → Integrations
 
