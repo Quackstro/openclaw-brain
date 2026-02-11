@@ -873,8 +873,14 @@ const brainPlugin = {
                 const data = JSON.parse(readFileSync(filePath, "utf8"));
                 const status = data.action?.status;
                 const createdAt = data.action?.createdAt ? new Date(data.action.createdAt).getTime() : 0;
-                const isTerminal = ["complete", "failed", "dismissed"].includes(status);
+                const isTerminal = ["complete", "failed", "dismissed", "expired"].includes(status);
                 const isStale = createdAt > 0 && (Date.now() - createdAt) > STALE_DAYS * 86400000;
+                // Also expire ancient non-terminal actions (proposed/awaiting-unlock/executing stuck > 7 days)
+                if (isStale && !isTerminal) {
+                  data.action.status = "expired";
+                  writeFileSync(filePath, JSON.stringify(data, null, 2));
+                  api.logger.info(`brain: expired ancient action ${file} (status=${status}, created=${data.action.createdAt})`);
+                }
                 if (isTerminal && isStale) {
                   unlinkSync(filePath);
                   cleaned++;
@@ -886,6 +892,8 @@ const brainPlugin = {
         } catch { /* non-fatal */ }
 
         let retryDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const RETRY_MAX_AGE_MS = 60 * 60 * 1000; // Only retry actions less than 1 hour old
 
         async function retryPendingPayments(): Promise<void> {
           if (!existsSync(pendingDir)) return;
@@ -902,6 +910,15 @@ const brainPlugin = {
               if (action.status !== "awaiting-unlock" && action.status !== "proposed") continue;
               if (action.status === "executing") continue; // already being processed
               if (retried.has(action.id)) continue;
+
+              // Skip stale actions — don't auto-retry old proposals
+              const createdAt = action.createdAt ? new Date(action.createdAt).getTime() : 0;
+              if (createdAt > 0 && (Date.now() - createdAt) > RETRY_MAX_AGE_MS) {
+                api.logger.info(`brain: skipping stale action ${action.id} (created ${action.createdAt}, status=${action.status})`);
+                action.status = "expired";
+                writeFileSync(`${pendingDir}/${file}`, JSON.stringify(data, null, 2));
+                continue;
+              }
 
               api.logger.info(`brain: sending auto-execute event for ${action.id} (was ${action.status}) after wallet unlock`);
               retried.add(action.id);
@@ -938,21 +955,26 @@ const brainPlugin = {
 
         try {
           const watcher = watch(eventsDir, (_eventType, filename) => {
-            if (filename === "wallet-unlocked") handleUnlockEvent();
+            // filename can be null on some Linux filesystems — check file existence as fallback
+            if (filename === "wallet-unlocked" || (filename === null && existsSync(`${eventsDir}/wallet-unlocked`))) {
+              handleUnlockEvent();
+            }
           });
           (api as any)._walletWatcher = watcher;
+          api.logger.info("brain: watching events dir for wallet-unlocked");
         } catch (err) {
           api.logger.error(`brain: failed to watch events dir (polling fallback active): ${err}`);
         }
 
-        // Polling fallback: check every 30s in case fs.watch misses events
+        // Polling fallback: check every 10s in case fs.watch misses events
         const pollInterval = setInterval(() => {
           try {
             if (existsSync(`${eventsDir}/wallet-unlocked`)) {
+              api.logger.info("brain: polling fallback detected wallet-unlocked event file");
               handleUnlockEvent();
             }
           } catch { /* non-fatal */ }
-        }, 30000);
+        }, 10000);
         (api as any)._walletPollInterval = pollInterval;
       },
       stop: () => {

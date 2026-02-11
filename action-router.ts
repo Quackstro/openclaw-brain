@@ -865,6 +865,16 @@ async function handlePaymentAction(
     details: `Payment resolved: to=${resolution.dogeAddress ?? "?"}, amount=${resolution.amount ?? "?"}, score=${resolution.resolutionScore.toFixed(2)}, errors=[${resolution.errors.join("; ")}]`,
   });
 
+  // Reject if resolution has critical errors (e.g. amount exceeds safety cap)
+  if (resolution.errors.length > 0) {
+    await logAudit(store, {
+      action: "action-routed",
+      inputId: inboxId,
+      details: `Payment rejected: ${resolution.errors.join("; ")}`,
+    });
+    return { action: "payment-rejected", details: resolution.errors.join("; ") };
+  }
+
   // Step 2: Create action object
   const action = createPaymentAction(classification, resolution);
 
