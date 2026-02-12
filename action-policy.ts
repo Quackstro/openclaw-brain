@@ -9,6 +9,7 @@
 
 import type { Action } from "./schemas.js";
 import type { PaymentResolution } from "./payment-resolver.js";
+import { checkDailyLimit, checkVelocity } from "./spending-guard.js";
 
 // ============================================================================
 // Types
@@ -36,6 +37,9 @@ const PROMPT_WARNING_SCORE_THRESHOLD = 0.50;
 
 /**
  * Evaluate a payment action against Brain-side policy thresholds.
+ * 
+ * IMPORTANT: Hardening guards are checked BEFORE score-based policy evaluation.
+ * If any guard fails, the payment is immediately rejected regardless of score.
  *
  * @param action - The payment Action object
  * @param resolution - The payment resolution with recipient info
@@ -48,6 +52,39 @@ export function evaluatePaymentPolicy(
   const score = action.executionScore;
   const amount = resolution.amount ?? 0;
   const isFirstTime = resolution.isFirstTimeRecipient;
+  const address = resolution.dogeAddress;
+
+  // ============================================================================
+  // HARDENING GUARDS - checked BEFORE score-based policy
+  // ============================================================================
+
+  // Guard 1: Daily spending limit
+  if (amount > 0) {
+    const dailyLimit = checkDailyLimit(amount);
+    if (!dailyLimit.allowed) {
+      return {
+        decision: "pending",
+        reason: `Daily limit exceeded: ${dailyLimit.spent.toFixed(2)} + ${amount} > ${dailyLimit.limit} DOGE`,
+      };
+    }
+  }
+
+  // Guard 2: Velocity check (payments per hour)
+  const velocity = checkVelocity();
+  if (!velocity.allowed) {
+    return {
+      decision: "pending",
+      reason: `Too many payments: ${velocity.count} >= ${velocity.limit} per hour`,
+    };
+  }
+
+  // Guard 3: Duplicate payment protection
+  // NOTE: Removed — duplicate check lives in action-router.ts (hard block).
+  // Having it here as a soft block (→ pending) was dead code since the router fires first.
+
+  // ============================================================================
+  // SCORE-BASED POLICY EVALUATION (original logic)
+  // ============================================================================
 
   // First-time recipients: never auto-approve
   if (isFirstTime && score >= AUTO_SCORE_THRESHOLD && amount <= AUTO_MAX_AMOUNT) {

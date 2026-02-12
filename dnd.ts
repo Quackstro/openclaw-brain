@@ -46,8 +46,8 @@ export interface DndConfig {
 export const DEFAULT_DND_CONFIG: DndConfig = {
   autoQuiet: {
     enabled: true,
-    from: "22:00",
-    to: "07:00",
+    from: "02:00",
+    to: "06:00",
   },
   timezone: "America/New_York",
 };

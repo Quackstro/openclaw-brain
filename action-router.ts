@@ -27,6 +27,8 @@ import { resolvePaymentEntities, type PaymentResolution } from "./payment-resolv
 import { createPaymentAction } from "./payment-action.js";
 import { evaluatePaymentPolicy, type PolicyDecision } from "./action-policy.js";
 import { sendPaymentApproval, sendPaymentConfirmation, sendPaymentFailure } from "./payment-approval.js";
+import { checkDuplicate, recordPaymentProposal } from "./spending-guard.js";
+import { checkProposalRateLimit } from "./proposal-rate-limit.js";
 import { DEFAULT_CHAT_ID } from "./constants.js";
 
 const execFileAsync = promisify(execFile);
@@ -841,6 +843,20 @@ async function handlePaymentAction(
     return { action: "no-action", details: "No embedder for payment resolution" };
   }
 
+  // Rate limiting check: reject before resolving entities if rate limit exceeded
+  const rateLimit = checkProposalRateLimit();
+  if (!rateLimit.allowed) {
+    await logAudit(store, {
+      action: "action-routed",
+      inputId: inboxId,
+      details: `Payment proposal rate limit exceeded: ${rateLimit.count} >= ${rateLimit.limit} per hour`,
+    });
+    return { 
+      action: "payment-failed", 
+      details: `Rate limit exceeded: ${rateLimit.count}/${rateLimit.limit} proposals per hour` 
+    };
+  }
+
   // Extract params from classifier proposedActions
   const proposedAction = classification.proposedActions?.[0];
   const params = proposedAction?.params ?? {};
@@ -873,6 +889,29 @@ async function handlePaymentAction(
       details: `Payment rejected: ${resolution.errors.join("; ")}`,
     });
     return { action: "payment-rejected", details: resolution.errors.join("; ") };
+  }
+
+  // Check for duplicate payments (same address + amount within 10 minutes)
+  if (resolution.dogeAddress && resolution.amount) {
+    const duplicateCheck = checkDuplicate(resolution.dogeAddress, resolution.amount, 10);
+    if (duplicateCheck.isDuplicate) {
+      await logAudit(store, {
+        action: "action-routed",
+        inputId: inboxId,
+        details: `Payment rejected: duplicate payment detected (${resolution.amount} DOGE to ${resolution.dogeAddress} within 10 minutes)`,
+      });
+      return { 
+        action: "payment-failed", 
+        details: `Duplicate payment blocked: Same amount to same address within 10 minutes` 
+      };
+    }
+
+    // Record this payment proposal for future duplicate detection
+    recordPaymentProposal(
+      resolution.dogeAddress, 
+      resolution.amount, 
+      resolution.reason || "Brain payment"
+    );
   }
 
   // Step 2: Create action object

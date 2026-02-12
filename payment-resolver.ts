@@ -11,6 +11,40 @@ import { readFileSync } from "node:fs";
 import type { BrainStore } from "./store.js";
 import type { EmbeddingProvider } from "./schemas.js";
 import { DOGE_ADDRESS_RE, MAX_PAYMENT_AMOUNT } from "./constants.js";
+import { validateDogeAddress } from "./spending-guard.js";
+
+// ============================================================================
+// Name similarity guard
+// ============================================================================
+
+/**
+ * Check if a query name plausibly matches a stored person name.
+ * Uses case-insensitive substring + bigram overlap to catch typos
+ * while rejecting completely unrelated names like "NewGuy" → "Castro".
+ *
+ * @returns true if names are similar enough to be the same person
+ */
+function namesSimilar(query: string, stored: string): boolean {
+  const q = query.toLowerCase().trim();
+  const s = stored.toLowerCase().trim();
+
+  // Exact or substring match
+  if (s.includes(q) || q.includes(s)) return true;
+
+  // Bigram overlap (Dice coefficient) — catches typos like "Castor" → "Castro"
+  const bigrams = (str: string): Set<string> => {
+    const set = new Set<string>();
+    for (let i = 0; i < str.length - 1; i++) set.add(str.slice(i, i + 2));
+    return set;
+  };
+  const qBi = bigrams(q);
+  const sBi = bigrams(s);
+  if (qBi.size === 0 || sBi.size === 0) return false;
+  let overlap = 0;
+  for (const b of qBi) if (sBi.has(b)) overlap++;
+  const dice = (2 * overlap) / (qBi.size + sBi.size);
+  return dice >= 0.4;
+}
 
 // ============================================================================
 // Types
@@ -206,6 +240,17 @@ export async function resolvePaymentEntities(
         }
       }
 
+      // Name similarity guard: reject if the matched name doesn't resemble the query.
+      // Embedding similarity alone is unreliable with small people buckets —
+      // "NewGuy" can match "Castro" at 0.5+ when there are only 2 people.
+      if (matched && result.recipientName) {
+        const storedName = (matched.record.name as string) || "";
+        if (!namesSimilar(result.recipientName, storedName)) {
+          console.log(`[brain] payment-resolver: name guard rejected "${result.recipientName}" ≠ "${storedName}" (score=${matched.score.toFixed(3)})`);
+          matched = null;
+        }
+      }
+
       if (matched) {
         result.brainPersonId = matched.record.id as string;
         const address = await resolveAddressFromPerson(matched.record, store, embedder, history);
@@ -265,6 +310,17 @@ export async function resolvePaymentEntities(
       (tx) => tx.address === result.dogeAddress && tx.type === "send",
     );
     result.isFirstTimeRecipient = !hasPriorSend;
+  }
+
+  // 6. Validate DOGE address (Base58Check)
+  if (result.dogeAddress) {
+    const validation = validateDogeAddress(result.dogeAddress);
+    if (!validation.valid) {
+      result.errors.push(`Invalid DOGE address: ${validation.error}`);
+      // Clear the address since it's invalid
+      result.dogeAddress = null;
+      result.resolutionScore = Math.max(0, result.resolutionScore - 0.50);
+    }
   }
 
   return result;
