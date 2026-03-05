@@ -1,31 +1,16 @@
 {
-  "name": "@quackstro/brain",
-  "version": "2026.2.1",
+  "name": "@quackstro/openclaw-brain",
+  "version": "2026.3.5",
+  "private": true,
   "type": "module",
-  "description": "Brain 2.0 — Behavioral support system that captures thoughts, classifies them, stores structured data, and proactively surfaces the right information.",
-  "dependencies": {
-    "@lancedb/lancedb": "^0.23.0",
-    "@sinclair/typebox": "0.34.47"
+  "description": "Brain — behavioral memory system for OpenClaw. Auto-classifies thoughts into semantic buckets with action detection.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "echo 'TypeScript compilation handled by OpenClaw runtime'"
   },
   "devDependencies": {
-    "tsx": "^4.19.4",
+    "vitest": "^4.0.0",
     "typescript": "^5.7.3"
-  },
-  "openclaw": {
-    "extensions": [
-      "./index.ts"
-    ],
-    "install": {
-      "npmSpec": "@quackstro/brain",
-      "localPath": "extensions/brain",
-      "defaultChoice": "npm"
-    }
-  },
-  "scripts": {
-    "test": "npx tsx tests/store.test.ts && npx tsx tests/phase1.test.ts && npx tsx tests/phase2.test.ts",
-    "test:store": "npx tsx tests/store.test.ts",
-    "test:phase1": "npx tsx tests/phase1.test.ts",
-    "test:phase2": "npx tsx tests/phase2.test.ts",
-    "build": "echo 'TypeScript compilation handled by OpenClaw runtime'"
   }
 }

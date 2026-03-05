@@ -1,6 +1,5 @@
-# OS
-.DS_Store
-
-# Runtime / temp
-*.tmp
-*.log
+node_modules/
+dist/
+*.lance/
+brain/lancedb/
+.env
