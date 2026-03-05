@@ -16,7 +16,9 @@
     "./router": "./router.ts",
     "./commands/drop": "./commands/drop.ts",
     "./commands/fix": "./commands/fix.ts",
-    "./commands/recall": "./commands/recall.ts"
+    "./commands/recall": "./commands/recall.ts",
+    "./parse-llm-json": "./parse-llm-json.ts",
+    "./noteworthy": "./noteworthy.ts"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.26.2",

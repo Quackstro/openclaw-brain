@@ -1,22 +1,5 @@
 import { describe, expect, it } from "vitest";
-
-// Since isMessageNoteworthy is private to the module, we test it indirectly
-// by extracting the logic into a testable form. For now, replicate the heuristic.
-
-function isMessageNoteworthy(text: string): boolean {
-  const lower = text.toLowerCase().trim();
-  if (lower.length < 20) return false;
-  const trivialPatterns = [
-    /^(ok|okay|sure|yes|no|yep|nope|thanks|thank you|ty|thx|lol|haha|hmm|ah|oh|cool|nice|great|good|got it|understood|roger|ack)\s*[.!?]*$/i,
-    /^(hi|hello|hey|yo|sup|morning|evening|night|gm|gn)\s*[.!?]*$/i,
-    /^(👍|👌|✅|❌|🙏|😊|😂|🤣|💯|🔥|❤️|🎉)\s*$/,
-  ];
-  for (const pattern of trivialPatterns) {
-    if (pattern.test(lower)) return false;
-  }
-  const wordCount = lower.split(/\s+/).length;
-  return wordCount >= 4;
-}
+import { isMessageNoteworthy } from "./noteworthy.js";
 
 describe("isMessageNoteworthy", () => {
   it("rejects short messages", () => {

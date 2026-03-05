@@ -4,7 +4,7 @@
  * Detects actionable intents from classification results and input tags.
  */
 
-import type { ClassificationResult } from "@openclaw/brain-core";
+import type { ClassificationResult } from "@quackstro/brain-core";
 import type { DetectedIntent } from "./types.js";
 
 // ============================================================================

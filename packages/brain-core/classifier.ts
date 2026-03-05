@@ -8,6 +8,7 @@
  */
 
 import type { ClassificationResult, DetectedIntent } from "./schemas.js";
+import { parseJsonFromLlm } from "./parse-llm-json.js";
 
 // ============================================================================
 // Classification prompt builder (bucket list is configurable)
@@ -280,34 +281,10 @@ async function classifyViaGateway(
     throw new Error("No text in gateway response: " + JSON.stringify(data).slice(0, 500));
   }
 
-  // Strip markdown fences if present, then extract just the JSON object
-  let jsonStr = textContent
-    .replace(/^```(?:json)?\s*\n?/m, "")
-    .replace(/\n?```\s*$/m, "")
-    .trim();
-
-  // Extract the JSON object — find first { and its matching }
-  const startIdx = jsonStr.indexOf("{");
-  if (startIdx >= 0) {
-    let depth = 0;
-    let endIdx = startIdx;
-    for (let i = startIdx; i < jsonStr.length; i++) {
-      if (jsonStr[i] === "{") depth++;
-      else if (jsonStr[i] === "}") depth--;
-      if (depth === 0) {
-        endIdx = i;
-        break;
-      }
-    }
-    jsonStr = jsonStr.slice(startIdx, endIdx + 1);
-  }
-
-  // Parse JSON response
-  let raw: any;
-  try {
-    raw = JSON.parse(jsonStr);
-  } catch (e) {
-    throw new Error(`Failed to parse classification JSON: ${jsonStr.slice(0, 500)}`);
+  // Parse JSON from LLM response (handles markdown fences and brace extraction)
+  const raw = parseJsonFromLlm(textContent);
+  if (!raw) {
+    throw new Error(`Failed to parse classification JSON: ${textContent.slice(0, 500)}`);
   }
 
   // Validate the result
@@ -399,7 +376,7 @@ const VALID_INTENTS: Set<string> = new Set([
   "none",
 ]);
 
-function normalizeClassification(raw: any): ClassificationResult {
+export function normalizeClassification(raw: any): ClassificationResult {
   const rawIntent = raw.detectedIntent as string | undefined;
   const detectedIntent: DetectedIntent =
     rawIntent && VALID_INTENTS.has(rawIntent) ? (rawIntent as DetectedIntent) : "none";

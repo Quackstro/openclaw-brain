@@ -4,7 +4,8 @@
  * LLM-based extraction of time information from natural language.
  */
 
-import type { ClassificationResult } from "@openclaw/brain-core";
+import type { ClassificationResult } from "@quackstro/brain-core";
+import { parseJsonFromLlm } from "@quackstro/brain-core/parse-llm-json";
 import type { TimeExtraction, ActionRouterConfig } from "./types.js";
 
 // ============================================================================
@@ -102,39 +103,6 @@ OUTPUT (JSON only, no markdown fences):
     };
   } catch (err) {
     console.error("[brain-actions] Time extraction error:", err);
-    return null;
-  }
-}
-
-/**
- * Parse JSON from LLM response, handling markdown fences.
- */
-function parseJsonFromLlm(text: string): any {
-  let jsonStr = text
-    .replace(/^```(?:json)?\s*\n?/m, "")
-    .replace(/\n?```\s*$/m, "")
-    .trim();
-
-  // Extract JSON object
-  const startIdx = jsonStr.indexOf("{");
-  if (startIdx >= 0) {
-    let depth = 0;
-    let endIdx = startIdx;
-    for (let i = startIdx; i < jsonStr.length; i++) {
-      if (jsonStr[i] === "{") depth++;
-      else if (jsonStr[i] === "}") depth--;
-      if (depth === 0) {
-        endIdx = i;
-        break;
-      }
-    }
-    jsonStr = jsonStr.slice(startIdx, endIdx + 1);
-  }
-
-  try {
-    return JSON.parse(jsonStr);
-  } catch {
-    console.error(`[brain-actions] Failed to parse JSON: ${jsonStr.slice(0, 200)}`);
     return null;
   }
 }

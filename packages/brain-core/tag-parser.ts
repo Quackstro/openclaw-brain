@@ -13,7 +13,7 @@
 // ============================================================================
 
 /** Supported input tag types (normalized to lowercase). */
-export type InputTag = "todo" | "reminder" | "buy" | "call" | "book";
+export type InputTag = "todo" | "reminder" | "buy" | "call" | "book" | "payment";
 
 /** Result of parsing input tags from raw text. */
 export interface TagParseResult {
@@ -34,6 +34,10 @@ const TAG_MAP: Record<string, InputTag> = {
   buy: "buy",
   call: "call",
   book: "book",
+  payment: "payment",
+  pay: "payment",
+  send: "payment",
+  tip: "payment",
 };
 
 /**
@@ -104,6 +108,7 @@ export function tagToIntent(tag: InputTag): string {
     buy: "purchase",
     call: "call",
     book: "booking",
+    payment: "payment",
   };
   return mapping[tag];
 }

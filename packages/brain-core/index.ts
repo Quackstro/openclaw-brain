@@ -18,6 +18,7 @@ import { handleRecall, formatRecallResults, formatRecallForContext } from "./com
 import { createEmbeddingProvider, getVectorDimension } from "./embeddings.js";
 import { DEFAULT_BUCKETS, SYSTEM_TABLES, type EmbeddingProvider } from "./schemas.js";
 import { BrainStore } from "./store.js";
+import { isMessageNoteworthy } from "./noteworthy.js";
 
 // ============================================================================
 // Re-exports for extension consumers
@@ -35,10 +36,15 @@ export {
   createClassifier,
   classifyText,
   bucketToTable,
+  validateClassification,
+  normalizeClassification,
+  buildClassificationPrompt,
   type ClassifierFn,
   type ClassifyOptions,
   type ClassifyResult,
 } from "./classifier.js";
+export { parseJsonFromLlm } from "./parse-llm-json.js";
+export { isMessageNoteworthy } from "./noteworthy.js";
 export { parseInputTags, tagToIntent, type InputTag, type TagParseResult } from "./tag-parser.js";
 export { logAudit, getAuditTrail, type AuditAction, type LogAuditParams } from "./audit.js";
 export {
@@ -129,29 +135,6 @@ function parseConfig(raw: unknown): BrainCoreConfig | null {
     autoRecallLimit: (cfg.autoRecallLimit as number) ?? 3,
     autoRecallMinScore: (cfg.autoRecallMinScore as number) ?? 0.3,
   };
-}
-
-// ============================================================================
-// Auto-capture heuristic
-// ============================================================================
-
-/** Quick heuristic to filter out trivial messages from auto-capture. */
-function isMessageNoteworthy(text: string): boolean {
-  const lower = text.toLowerCase().trim();
-  // Skip very short messages
-  if (lower.length < 20) return false;
-  // Skip common acks/greetings
-  const trivialPatterns = [
-    /^(ok|okay|sure|yes|no|yep|nope|thanks|thank you|ty|thx|lol|haha|hmm|ah|oh|cool|nice|great|good|got it|understood|roger|ack)\s*[.!?]*$/i,
-    /^(hi|hello|hey|yo|sup|morning|evening|night|gm|gn)\s*[.!?]*$/i,
-    /^(👍|👌|✅|❌|🙏|😊|😂|🤣|💯|🔥|❤️|🎉)\s*$/,
-  ];
-  for (const pattern of trivialPatterns) {
-    if (pattern.test(lower)) return false;
-  }
-  // Must have some substance (multiple words)
-  const wordCount = lower.split(/\s+/).length;
-  return wordCount >= 4;
 }
 
 // ============================================================================
