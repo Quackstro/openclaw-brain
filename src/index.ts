@@ -7,6 +7,7 @@
  * Consolidates the former brain-core + brain-actions packages into a single plugin.
  */
 
+import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { getAuditTrail } from "./audit.js";
 import { createClassifier, type ClassifierFn } from "./classifier.js";
@@ -254,6 +255,7 @@ const brainPlugin = {
         gatewayUrl: cfg.actions.gatewayUrl,
         timezone: cfg.actions.timezone,
         extractionModel: cfg.actions.extractionModel,
+        storagePath: path.dirname(resolvedDbPath),
         reminder: cfg.actions.reminder,
         payment: cfg.actions.payment,
       };
