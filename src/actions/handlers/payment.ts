@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { writeFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { logAudit } from "@quackstro/brain-core";
+import { logAudit } from "../../audit.js";
 import type {
   ActionResult,
   ActionContext,

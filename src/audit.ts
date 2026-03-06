@@ -79,6 +79,5 @@ export async function getAuditTrail(
   store: BrainStore,
   inputId: string,
 ): Promise<Record<string, unknown>[]> {
-  const allAudits = await store.list("audit_trail");
-  return allAudits.filter((a) => a.inputId === inputId);
+  return store.listFiltered("audit_trail", `inputId = '${store.esc(inputId)}'`, 100);
 }

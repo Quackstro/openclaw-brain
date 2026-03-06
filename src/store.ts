@@ -196,6 +196,22 @@ export class BrainStore {
   }
 
   /**
+   * List records matching a server-side WHERE clause (LanceDB `.where()`).
+   * More efficient than `list()` + JS filter for large tables.
+   */
+  async listFiltered(
+    tableName: string,
+    whereClause: string,
+    limit?: number,
+  ): Promise<Record<string, unknown>[]> {
+    const table = await this.getTable(tableName);
+    let query = table.query().where(whereClause);
+    if (limit) query = query.limit(limit);
+    const rows = await query.toArray();
+    return rows.map((r) => this.cleanRow(r));
+  }
+
+  /**
    * Count records in a table.
    */
   async count(tableName: string): Promise<number> {
@@ -225,7 +241,7 @@ export class BrainStore {
     let searchBuilder = table.vectorSearch(vector).limit(limit * 2);
 
     if (filter) {
-      searchBuilder = searchBuilder.where(filter);
+      searchBuilder = searchBuilder.where(this.sanitizeFilter(filter));
     }
 
     const rows = await searchBuilder.toArray();
@@ -269,8 +285,24 @@ export class BrainStore {
   // --------------------------------------------------------------------------
 
   /** Escape single quotes for LanceDB SQL-like filter strings. */
-  private esc(value: string): string {
+  esc(value: string): string {
     return value.replace(/'/g, "''");
+  }
+
+  /**
+   * Validate a filter string passed to search().
+   * Only allows: alphanumeric, spaces, basic operators (=, <, >, !=, AND, OR, NOT),
+   * single-quoted string literals, numeric literals, parentheses, underscores, dots.
+   * Throws if anything outside this allowlist is detected.
+   */
+  sanitizeFilter(filter: string): string {
+    // Strip out allowed tokens: identifiers, numbers, operators, string literals, parens/spaces
+    // Single-quoted string literals are allowed (content can be anything since it's data, not SQL)
+    const allowed = /^(?:[a-zA-Z_][a-zA-Z0-9_.]*|[0-9]+(?:\.[0-9]+)?|'[^']*(?:''[^']*)*'|=|!=|<>|<=|>=|<|>|\s|AND|OR|NOT|\(|\))+$/i;
+    if (!allowed.test(filter)) {
+      throw new Error(`Invalid filter string: "${filter.slice(0, 100)}"`);
+    }
+    return filter;
   }
 
   /**

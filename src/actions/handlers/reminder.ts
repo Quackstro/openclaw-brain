@@ -7,7 +7,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { logAudit } from "@quackstro/brain-core";
+import { logAudit } from "../../audit.js";
 import { extractTime, localToUtcMs, isInPast, formatExtraction } from "../time-extractor.js";
 import type {
   ActionResult,

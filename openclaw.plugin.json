@@ -1,7 +1,7 @@
 {
-  "id": "brain-core",
-  "name": "Brain Core",
-  "description": "Generic bucket-based memory system with LLM classification. Captures thoughts, classifies them into configurable buckets, and provides semantic search.",
+  "id": "brain",
+  "name": "Brain",
+  "description": "Behavioral memory system for OpenClaw — captures thoughts, classifies into configurable buckets, provides semantic search, and detects actionable intents.",
   "kind": "memory",
   "uiHints": {
     "storage.dbPath": {
@@ -64,6 +64,28 @@
       "placeholder": "0.3",
       "help": "Minimum similarity score for auto-recalled memories",
       "advanced": true
+    },
+    "actions.enabled": {
+      "label": "Enable Actions",
+      "help": "Enable automatic action detection and routing"
+    },
+    "actions.timezone": {
+      "label": "Timezone",
+      "placeholder": "America/New_York",
+      "help": "User timezone for reminder scheduling"
+    },
+    "actions.reminder.enabled": {
+      "label": "Enable Reminders",
+      "help": "Enable reminder detection and cron job creation"
+    },
+    "actions.payment.enabled": {
+      "label": "Enable Payments",
+      "help": "Enable payment intent detection"
+    },
+    "actions.payment.maxAutoExecuteAmount": {
+      "label": "Max Auto-Execute Amount",
+      "placeholder": "10",
+      "help": "Maximum amount for auto-execution (in DOGE)"
     }
   },
   "configSchema": {
@@ -83,16 +105,7 @@
       "buckets": {
         "type": "array",
         "items": { "type": "string" },
-        "default": [
-          "people",
-          "projects",
-          "ideas",
-          "admin",
-          "documents",
-          "goals",
-          "health",
-          "finance"
-        ],
+        "default": ["people", "projects", "ideas", "admin", "documents", "goals", "health", "finance"],
         "description": "List of bucket names for organizing thoughts"
       },
       "embedding": {
@@ -104,17 +117,9 @@
             "enum": ["gemini", "openai", "auto"],
             "default": "auto"
           },
-          "apiKey": {
-            "type": "string"
-          },
-          "model": {
-            "type": "string",
-            "default": "text-embedding-3-small"
-          },
-          "baseURL": {
-            "type": "string",
-            "description": "Custom base URL for OpenAI-compatible APIs"
-          }
+          "apiKey": { "type": "string" },
+          "model": { "type": "string", "default": "text-embedding-3-small" },
+          "baseURL": { "type": "string", "description": "Custom base URL for OpenAI-compatible APIs" }
         },
         "required": ["apiKey"]
       },
@@ -122,14 +127,8 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "apiKey": {
-            "type": "string",
-            "description": "API key for classification (uses gateway token if not set)"
-          },
-          "model": {
-            "type": "string",
-            "default": "claude-haiku-3.5"
-          }
+          "apiKey": { "type": "string", "description": "API key for classification (uses gateway token if not set)" },
+          "model": { "type": "string", "default": "claude-haiku-3.5" }
         }
       },
       "confidenceThreshold": {
@@ -141,26 +140,54 @@
       "autoCapture": {
         "type": "boolean",
         "default": false,
-        "description": "Passively capture noteworthy info from conversations (default: false)"
+        "description": "Passively capture noteworthy info from conversations"
       },
       "autoRecall": {
         "type": "boolean",
         "default": false,
-        "description": "Inject relevant memories into system prompt before each agent turn (default: false)"
+        "description": "Inject relevant memories into system prompt before each agent turn"
       },
       "autoRecallLimit": {
         "type": "number",
         "minimum": 1,
         "maximum": 10,
-        "default": 3,
-        "description": "Max memories to inject when autoRecall is enabled"
+        "default": 3
       },
       "autoRecallMinScore": {
         "type": "number",
         "minimum": 0,
         "maximum": 1,
-        "default": 0.3,
-        "description": "Minimum similarity score for auto-recalled memories"
+        "default": 0.3
+      },
+      "actions": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Action detection and routing (reminders, payments, todos)",
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "gatewayToken": { "type": "string", "description": "Token for gateway LLM calls" },
+          "gatewayUrl": { "type": "string", "default": "http://127.0.0.1:18789" },
+          "timezone": { "type": "string", "default": "America/New_York" },
+          "extractionModel": { "type": "string", "default": "claude-haiku-3.5" },
+          "reminder": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean", "default": true },
+              "nagIntervalMinutes": { "type": "number", "default": 5 },
+              "defaultTime": { "type": "string", "default": "09:00" }
+            }
+          },
+          "payment": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "enabled": { "type": "boolean", "default": true },
+              "autoExecuteThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.95 },
+              "maxAutoExecuteAmount": { "type": "number", "default": 10 }
+            }
+          }
+        }
       }
     },
     "required": ["embedding"]

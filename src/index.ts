@@ -1,12 +1,10 @@
 /**
- * Brain Core — OpenClaw Plugin Entry Point.
+ * Brain — OpenClaw Plugin Entry Point.
  *
- * Generic bucket-based memory system with LLM classification.
- * Captures thoughts, classifies them into configurable buckets,
- * and provides semantic search.
+ * Unified behavioral memory system with LLM classification, semantic search,
+ * auto-capture, auto-recall, and action detection (reminders, payments, todos).
  *
- * This is the core engine — personal integrations (payments, calendars)
- * should be added via separate plugins or the clawd workspace.
+ * Consolidates the former brain-core + brain-actions packages into a single plugin.
  */
 
 import { Type } from "@sinclair/typebox";
@@ -20,8 +18,12 @@ import { DEFAULT_BUCKETS, SYSTEM_TABLES, type EmbeddingProvider } from "./schema
 import { BrainStore } from "./store.js";
 import { isMessageNoteworthy } from "./noteworthy.js";
 
+// Actions imports
+import { routeAction, shouldRouteAction } from "./actions/action-router.js";
+import type { ActionRouterConfig, ActionHooks, ActionContext } from "./actions/types.js";
+
 // ============================================================================
-// Re-exports for extension consumers
+// Re-exports
 // ============================================================================
 
 export { BrainStore, type BrainStoreConfig } from "./store.js";
@@ -44,6 +46,7 @@ export {
   type ClassifyResult,
 } from "./classifier.js";
 export { parseJsonFromLlm } from "./parse-llm-json.js";
+export { buildEmptyBucketRecord } from "./record-builder.js";
 export { isMessageNoteworthy } from "./noteworthy.js";
 export { parseInputTags, tagToIntent, type InputTag, type TagParseResult } from "./tag-parser.js";
 export { logAudit, getAuditTrail, type AuditAction, type LogAuditParams } from "./audit.js";
@@ -74,14 +77,24 @@ export {
   type RecallOptions,
 } from "./commands/recall.js";
 
+// Actions re-exports
+export * from "./actions/types.js";
+export * from "./actions/detector.js";
+export * from "./actions/time-extractor.js";
+export * from "./actions/action-router.js";
+export {
+  handleReminderAction,
+  handleBookingAction,
+  createPersistentReminder,
+} from "./actions/handlers/reminder.js";
+export { handlePaymentAction, extractPaymentParams } from "./actions/handlers/payment.js";
+
 // ============================================================================
-// Config parser
+// Config
 // ============================================================================
 
-interface BrainCoreConfig {
-  storage: {
-    dbPath: string;
-  };
+interface BrainConfig {
+  storage: { dbPath: string };
   buckets: readonly string[];
   embedding: {
     provider?: "gemini" | "openai" | "auto";
@@ -98,21 +111,42 @@ interface BrainCoreConfig {
   autoRecall: boolean;
   autoRecallLimit: number;
   autoRecallMinScore: number;
+  actions: {
+    enabled: boolean;
+    gatewayToken?: string;
+    gatewayUrl: string;
+    timezone: string;
+    extractionModel: string;
+    reminder: {
+      enabled: boolean;
+      nagIntervalMinutes: number;
+      defaultTime: string;
+    };
+    payment: {
+      enabled: boolean;
+      autoExecuteThreshold: number;
+      maxAutoExecuteAmount: number;
+    };
+  };
 }
 
-function parseConfig(raw: unknown): BrainCoreConfig | null {
+function parseConfig(raw: unknown): BrainConfig | null {
   if (!raw || typeof raw !== "object") return null;
   const cfg = raw as Record<string, unknown>;
 
   const embRaw = (cfg.embedding ?? {}) as Record<string, unknown>;
   if (typeof embRaw.apiKey !== "string") {
-    // No API key — plugin inactive
-    return null;
+    return null; // No API key — plugin inactive
   }
 
   const stoRaw = (cfg.storage ?? {}) as Record<string, unknown>;
   const classRaw = (cfg.classifier ?? {}) as Record<string, unknown>;
   const bucketsRaw = cfg.buckets as string[] | undefined;
+
+  // Actions config
+  const actRaw = (cfg.actions ?? {}) as Record<string, unknown>;
+  const reminderRaw = (actRaw.reminder ?? {}) as Record<string, unknown>;
+  const paymentRaw = (actRaw.payment ?? {}) as Record<string, unknown>;
 
   return {
     storage: {
@@ -134,6 +168,23 @@ function parseConfig(raw: unknown): BrainCoreConfig | null {
     autoRecall: (cfg.autoRecall as boolean) ?? false,
     autoRecallLimit: (cfg.autoRecallLimit as number) ?? 3,
     autoRecallMinScore: (cfg.autoRecallMinScore as number) ?? 0.3,
+    actions: {
+      enabled: actRaw.enabled !== false,
+      gatewayToken: actRaw.gatewayToken as string | undefined,
+      gatewayUrl: (actRaw.gatewayUrl as string) ?? "http://127.0.0.1:18789",
+      timezone: (actRaw.timezone as string) ?? "America/New_York",
+      extractionModel: (actRaw.extractionModel as string) ?? "claude-haiku-3.5",
+      reminder: {
+        enabled: reminderRaw.enabled !== false,
+        nagIntervalMinutes: (reminderRaw.nagIntervalMinutes as number) ?? 5,
+        defaultTime: (reminderRaw.defaultTime as string) ?? "09:00",
+      },
+      payment: {
+        enabled: paymentRaw.enabled !== false,
+        autoExecuteThreshold: (paymentRaw.autoExecuteThreshold as number) ?? 0.95,
+        maxAutoExecuteAmount: (paymentRaw.maxAutoExecuteAmount as number) ?? 10,
+      },
+    },
   };
 }
 
@@ -141,19 +192,19 @@ function parseConfig(raw: unknown): BrainCoreConfig | null {
 // Plugin Definition
 // ============================================================================
 
-const brainCorePlugin = {
-  id: "brain-core",
-  name: "Brain Core",
+const brainPlugin = {
+  id: "brain",
+  name: "Brain",
   description:
-    "Generic bucket-based memory system — captures thoughts, classifies them into " +
-    "configurable buckets, and provides semantic search.",
+    "Behavioral memory system — captures thoughts, classifies them into configurable " +
+    "buckets, provides semantic search, and detects actionable intents (reminders, payments).",
   kind: "memory" as const,
 
   register(api: any) {
     const cfg = parseConfig(api.pluginConfig);
     if (!cfg) {
       api.logger?.info?.(
-        "brain-core: no config provided, plugin inactive. Add brain-core config to openclaw.json to activate.",
+        "brain: no config or missing embedding.apiKey, plugin inactive.",
       );
       return;
     }
@@ -171,7 +222,7 @@ const brainCorePlugin = {
     // Create store with configured buckets
     const store = new BrainStore(resolvedDbPath, embedder.dim, cfg.buckets);
 
-    // Create classifier (if API key is configured)
+    // Create classifier
     let classifierFn: ClassifierFn | undefined;
     if (cfg.classifier.apiKey) {
       classifierFn = createClassifier({
@@ -182,16 +233,43 @@ const brainCorePlugin = {
     }
 
     api.logger.info(
-      `brain-core: registered (db: ${resolvedDbPath}, buckets: ${cfg.buckets.length}, embeddings: ${embedder.name}, classifier: ${classifierFn ? "active" : "no API key"})`,
+      `brain: registered (db: ${resolvedDbPath}, buckets: ${cfg.buckets.length}, ` +
+        `embeddings: ${embedder.name}, classifier: ${classifierFn ? "active" : "no API key"})`,
     );
 
-    // Store references for extension consumers
-    (api as any)._brainCore = {
-      store,
-      embedder,
-      classifierFn,
-      config: cfg,
-    };
+    // Expose internals for extension consumers
+    (api as any)._brainCore = { store, embedder, classifierFn, config: cfg };
+
+    // ==================================================================
+    // Actions setup
+    // ==================================================================
+
+    let actionsRouterConfig: ActionRouterConfig | undefined;
+    const actionsHooks: ActionHooks = {};
+
+    if (cfg.actions.enabled) {
+      actionsRouterConfig = {
+        enabled: cfg.actions.enabled,
+        gatewayToken: cfg.actions.gatewayToken ?? api.gatewayToken ?? "",
+        gatewayUrl: cfg.actions.gatewayUrl,
+        timezone: cfg.actions.timezone,
+        extractionModel: cfg.actions.extractionModel,
+        reminder: cfg.actions.reminder,
+        payment: cfg.actions.payment,
+      };
+
+      (api as any)._brainActions = {
+        config: actionsRouterConfig,
+        hooks: actionsHooks,
+        routeAction,
+        shouldRouteAction,
+      };
+
+      api.logger.info(
+        `brain: actions enabled (timezone: ${cfg.actions.timezone}, ` +
+          `reminders: ${cfg.actions.reminder.enabled}, payments: ${cfg.actions.payment.enabled})`,
+      );
+    }
 
     // ==================================================================
     // Tool: brain_drop
@@ -296,7 +374,6 @@ const brainCorePlugin = {
               }
             }
 
-            // Sort by score descending
             allResults.sort((a, b) => b.score - a.score);
             const topResults = allResults.slice(0, limit);
 
@@ -458,7 +535,7 @@ const brainCorePlugin = {
     );
 
     // ==================================================================
-    // Tool: brain_recall (user-facing formatted search)
+    // Tool: brain_recall
     // ==================================================================
 
     api.registerTool(
@@ -500,45 +577,37 @@ const brainCorePlugin = {
     );
 
     // ==================================================================
-    // Auto-Capture: passively capture from conversations
+    // Auto-Capture
     // ==================================================================
 
     if (cfg.autoCapture) {
       api.registerHook(["message_received"], async (event: any) => {
         const content = event?.content?.trim();
-        if (!content || content.length < 20) return; // skip trivial messages
-        if (content.startsWith("/")) return; // skip commands
+        if (!content || content.length < 20) return;
+        if (content.startsWith("/")) return;
 
         try {
-          // Only capture messages that seem noteworthy (not greetings, acks, etc.)
           const isNoteworthy = await isMessageNoteworthy(content);
           if (!isNoteworthy) return;
 
-          api.logger.debug?.(`brain-core: auto-capturing message (${content.length} chars)`);
+          api.logger.debug?.(`brain: auto-capturing message (${content.length} chars)`);
 
-          await handleDrop(
-            store,
-            embedder,
-            content,
-            "chat",
-            undefined,
-            {
-              classifierFn,
-              confidenceThreshold: cfg.confidenceThreshold,
-              async: true,
-              buckets: cfg.buckets,
-            },
-          );
+          await handleDrop(store, embedder, content, "chat", undefined, {
+            classifierFn,
+            confidenceThreshold: cfg.confidenceThreshold,
+            async: true,
+            buckets: cfg.buckets,
+          });
         } catch (err: any) {
-          api.logger.warn?.(`brain-core: auto-capture failed: ${err.message ?? err}`);
+          api.logger.warn?.(`brain: auto-capture failed: ${err.message ?? err}`);
         }
       });
 
-      api.logger.info("brain-core: auto-capture enabled (message_received hook)");
+      api.logger.info("brain: auto-capture enabled (message_received hook)");
     }
 
     // ==================================================================
-    // Auto-Recall: inject relevant memories into system prompt
+    // Auto-Recall
     // ==================================================================
 
     if (cfg.autoRecall) {
@@ -557,9 +626,7 @@ const brainCorePlugin = {
           const contextText = formatRecallForContext(result);
           if (!contextText) return;
 
-          api.logger.info?.(
-            `brain-core: injecting ${result.results.length} memories into context`,
-          );
+          api.logger.info?.(`brain: injecting ${result.results.length} memories into context`);
 
           return {
             prependContext: [
@@ -570,11 +637,41 @@ const brainCorePlugin = {
             ].join("\n"),
           };
         } catch (err: any) {
-          api.logger.warn?.(`brain-core: auto-recall failed: ${err.message ?? err}`);
+          api.logger.warn?.(`brain: auto-recall failed: ${err.message ?? err}`);
         }
       });
 
-      api.logger.info("brain-core: auto-recall enabled (before_agent_start hook)");
+      api.logger.info("brain: auto-recall enabled (before_agent_start hook)");
+    }
+
+    // ==================================================================
+    // Actions: Hook Registration Methods
+    // ==================================================================
+
+    if (cfg.actions.enabled && actionsRouterConfig) {
+      // Expose action hooks and router for extension consumers via _brainActions
+      // Extensions can set hooks directly: api._brainActions.hooks.onReminderDeliver = fn;
+      // Extensions can route actions: api._brainActions.routeAction(ctx);
+      (api as any)._brainActions.route = async (params: {
+        store: any;
+        embedder: any;
+        classification: any;
+        rawText: string;
+        inboxId: string;
+        inputTag?: string;
+      }) => {
+        const ctx: ActionContext = {
+          store: params.store,
+          embedder: params.embedder,
+          config: actionsRouterConfig!,
+          hooks: actionsHooks,
+          classification: params.classification,
+          rawText: params.rawText,
+          inboxId: params.inboxId,
+          inputTag: params.inputTag,
+        };
+        return await routeAction(ctx);
+      };
     }
 
     // ==================================================================
@@ -583,7 +680,7 @@ const brainCorePlugin = {
 
     api.registerCli(
       ({ program }: any) => {
-        const brain = program.command("brain").description("Brain Core plugin commands");
+        const brain = program.command("brain").description("Brain plugin commands");
 
         brain
           .command("stats")
@@ -678,15 +775,15 @@ const brainCorePlugin = {
     // ==================================================================
 
     api.registerService({
-      id: "brain-core",
+      id: "brain",
       start: () => {
-        api.logger.info(`brain-core: initialized (db: ${resolvedDbPath})`);
+        api.logger.info(`brain: initialized (db: ${resolvedDbPath})`);
       },
       stop: () => {
-        api.logger.info("brain-core: stopped");
+        api.logger.info("brain: stopped");
       },
     });
   },
 };
 
-export default brainCorePlugin;
+export default brainPlugin;

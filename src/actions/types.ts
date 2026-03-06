@@ -5,7 +5,11 @@
  * All handlers are generic with configurable hooks for delivery.
  */
 
-import type { BrainStore, ClassificationResult, EmbeddingProvider } from "@openclaw/brain-core";
+import type { BrainStore } from "../store.js";
+import type { ClassificationResult, EmbeddingProvider, DetectedIntent } from "../schemas.js";
+
+// Re-export for consumers that imported from this module
+export type { DetectedIntent } from "../schemas.js";
 
 // ============================================================================
 // Action Types
@@ -24,15 +28,6 @@ export type ActionType =
   | "payment-auto-executed"
   | "payment-pending"
   | "payment-failed";
-
-export type DetectedIntent =
-  | "reminder"
-  | "booking"
-  | "todo"
-  | "purchase"
-  | "call"
-  | "payment"
-  | "none";
 
 // ============================================================================
 // Action Results

@@ -11,6 +11,7 @@
 
 import { logAudit } from "../audit.js";
 import { bucketToTable } from "../classifier.js";
+import { buildEmptyBucketRecord } from "../record-builder.js";
 import type { EmbeddingProvider } from "../schemas.js";
 import type { BrainStore } from "../store.js";
 
@@ -153,93 +154,10 @@ function safeParseArray<T>(s: unknown): T[] {
 }
 
 /**
- * Build a record for inbox-to-bucket moves.
+ * Build a record for inbox-to-bucket moves (thin wrapper around shared builder).
  */
 function buildRecordFromInbox(rawText: string, targetBucket: string): Record<string, unknown> {
-  const now = new Date().toISOString();
-  const emptyActions = "[]";
-  const emptyTags = "[]";
-  const entryNote = JSON.stringify([{ date: now, note: rawText }]);
-  const base = { nextActions: emptyActions, entries: entryNote, tags: emptyTags };
-
-  switch (targetBucket) {
-    case "people":
-      return {
-        ...base,
-        name: rawText.slice(0, 120),
-        context: rawText,
-        company: "",
-        contactInfo: "",
-        followUpDate: "",
-        lastInteraction: now.split("T")[0],
-      };
-    case "projects":
-      return {
-        ...base,
-        name: rawText.slice(0, 120),
-        description: rawText,
-        status: "active",
-        blockers: "[]",
-        relatedPeople: "[]",
-        dueDate: "",
-      };
-    case "ideas":
-      return {
-        ...base,
-        title: rawText.slice(0, 120),
-        description: rawText,
-        potential: "explore",
-        relatedTo: "[]",
-      };
-    case "admin":
-      return {
-        ...base,
-        title: rawText.slice(0, 120),
-        category: "task",
-        dueDate: "",
-        recurring: "",
-      };
-    case "documents":
-      return {
-        ...base,
-        title: rawText.slice(0, 120),
-        summary: rawText,
-        sourceUrl: "",
-        filePath: "",
-        relatedTo: "[]",
-      };
-    case "goals":
-      return {
-        ...base,
-        title: rawText.slice(0, 120),
-        description: rawText,
-        timeframe: "medium",
-        status: "active",
-        milestones: "[]",
-        relatedProjects: "[]",
-      };
-    case "health":
-      return {
-        ...base,
-        title: rawText.slice(0, 120),
-        category: "general",
-        description: rawText,
-        provider: "",
-        followUpDate: "",
-      };
-    case "finance":
-      return {
-        ...base,
-        title: rawText.slice(0, 120),
-        category: "other",
-        amount: "",
-        currency: "",
-        dueDate: "",
-        recurring: "",
-      };
-    default:
-      return { ...base, title: rawText.slice(0, 120), description: rawText };
-  }
+  return buildEmptyBucketRecord(targetBucket, rawText.slice(0, 120), rawText);
 }
 
 // ============================================================================

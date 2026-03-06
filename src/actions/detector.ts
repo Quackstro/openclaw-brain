@@ -4,7 +4,7 @@
  * Detects actionable intents from classification results and input tags.
  */
 
-import type { ClassificationResult } from "@quackstro/brain-core";
+import type { ClassificationResult } from "../schemas.js";
 import type { DetectedIntent } from "./types.js";
 
 // ============================================================================
@@ -158,7 +158,7 @@ export function detectIntent(
   if (containsKeyword(rawText, TODO_KEYWORDS)) return "todo";
 
   // 4. Check classification urgency for time-sensitive items
-  if (classification.urgency === "high" && classification.followUpDate) {
+  if (classification.urgency === "now" && classification.followUpDate) {
     return "reminder";
   }
 

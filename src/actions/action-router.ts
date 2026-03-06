@@ -4,7 +4,7 @@
  * Routes detected intents to appropriate handlers.
  */
 
-import { logAudit } from "@quackstro/brain-core";
+import { logAudit } from "../audit.js";
 import { detectIntent, isTimeSensitive, isPaymentIntent, isTagOnlyIntent } from "./detector.js";
 import { handlePaymentAction } from "./handlers/payment.js";
 import { handleReminderAction, handleBookingAction } from "./handlers/reminder.js";

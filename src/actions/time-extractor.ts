@@ -4,8 +4,8 @@
  * LLM-based extraction of time information from natural language.
  */
 
-import type { ClassificationResult } from "@quackstro/brain-core";
-import { parseJsonFromLlm } from "@quackstro/brain-core/parse-llm-json";
+import type { ClassificationResult } from "../schemas.js";
+import { parseJsonFromLlm } from "../parse-llm-json.js";
 import type { TimeExtraction, ActionRouterConfig } from "./types.js";
 
 // ============================================================================
