@@ -64,7 +64,7 @@ export function buildEmptyBucketRecord(
       return {
         ...base,
         title,
-        category: "task",
+        category: "other",
         dueDate: "",
         recurring: "",
       };
@@ -82,7 +82,7 @@ export function buildEmptyBucketRecord(
         ...base,
         title,
         description,
-        timeframe: "medium",
+        timeframe: "short-term",
         status: "active",
         milestones: "[]",
         relatedProjects: "[]",
@@ -91,7 +91,7 @@ export function buildEmptyBucketRecord(
       return {
         ...base,
         title,
-        category: "general",
+        category: "wellness",
         description,
         provider: "",
         followUpDate: "",
@@ -101,7 +101,7 @@ export function buildEmptyBucketRecord(
         ...base,
         title,
         category: "other",
-        amount: "",
+        amount: 0,
         currency: "",
         dueDate: "",
         recurring: "",
