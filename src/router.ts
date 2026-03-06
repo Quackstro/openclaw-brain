@@ -140,10 +140,13 @@ export function buildBucketRecord(
       record.category = inferHealthCategory(classification);
       record.provider = extractProvider(classification);
       break;
-    case "finance":
-      record.category = inferFinanceCategory(classification);
-      record.amount = extractAmount(classification);
+    case "finance": {
+      const finCat = inferFinanceCategory(classification);
+      if (finCat !== "bill") record.category = finCat; // only override skeleton default on strong signal
+      const amount = extractAmount(classification);
+      if (amount > 0) record.amount = amount; // only override skeleton default when amount found
       break;
+    }
   }
 
   return record;
@@ -356,7 +359,7 @@ export async function mergeIntoExisting(
     nextActions: JSON.stringify(mergedActions),
   };
 
-  // Update date field if the new one is more recent.
+  // Update date field if the new one is sooner (earlier date takes priority).
   // Some buckets use followUpDate, others use dueDate — update whichever exists.
   if (classification.followUpDate) {
     const dateField = "dueDate" in existing ? "dueDate" : "followUpDate";

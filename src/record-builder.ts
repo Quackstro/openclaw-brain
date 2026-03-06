@@ -82,7 +82,7 @@ export function buildEmptyBucketRecord(
         ...base,
         title,
         description,
-        timeframe: "medium-term",
+        timeframe: "short-term",
         status: "active",
         milestones: "[]",
         relatedProjects: "[]",
