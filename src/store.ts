@@ -205,7 +205,7 @@ export class BrainStore {
     limit?: number,
   ): Promise<Record<string, unknown>[]> {
     const table = await this.getTable(tableName);
-    let query = table.query().where(whereClause);
+    let query = table.query().where(this.sanitizeFilter(whereClause));
     if (limit) query = query.limit(limit);
     const rows = await query.toArray();
     return rows.map((r) => this.cleanRow(r));
