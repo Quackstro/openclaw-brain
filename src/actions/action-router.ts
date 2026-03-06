@@ -71,7 +71,7 @@ export async function routeAction(ctx: ActionContext): Promise<ActionResult> {
     return { action: "no-action", details: "No actionable intent detected" };
   }
 
-  console.log(`[brain-actions] Detected intent: ${intent} for "${classification.title}"`);
+  ctx.logger.info(`brain: detected intent: ${intent} for "${classification.title}"`);
 
   // Route to appropriate handler
   try {
@@ -98,7 +98,7 @@ export async function routeAction(ctx: ActionContext): Promise<ActionResult> {
 
     return { action: "no-action", details: `Unhandled intent: ${intent}` };
   } catch (err) {
-    console.error(`[brain-actions] Handler error for ${intent}:`, err);
+    ctx.logger.error(`brain: handler error for ${intent}: ${err}`);
 
     await logAudit(store, {
       action: "action-routed",

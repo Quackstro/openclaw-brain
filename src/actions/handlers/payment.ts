@@ -113,7 +113,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
     try {
       resolution = await hooks.onPaymentResolve(params.recipient, embedder);
     } catch (err) {
-      console.error("[brain-actions] Payment resolution error:", err);
+      ctx.logger.error(`brain: payment resolution error: ${err}`);
       resolution = { resolved: false, error: String(err) };
     }
   } else {
@@ -256,7 +256,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
     try {
       await hooks.onPaymentApproval(params, resolution, actionId);
     } catch (err) {
-      console.error("[brain-actions] Payment approval hook error:", err);
+      ctx.logger.error(`brain: payment approval hook error: ${err}`);
     }
   }
 

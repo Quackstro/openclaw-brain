@@ -669,6 +669,7 @@ const brainPlugin = {
           rawText: params.rawText,
           inboxId: params.inboxId,
           inputTag: params.inputTag,
+          logger: api.logger,
         };
         return await routeAction(ctx);
       };

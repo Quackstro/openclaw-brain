@@ -177,6 +177,14 @@ export interface ActionRouterConfig {
 // Context passed to handlers
 // ============================================================================
 
+/** Minimal logger interface matching OpenClaw's plugin logger. */
+export interface BrainLogger {
+  info: (msg: string) => void;
+  warn: (msg: string) => void;
+  error: (msg: string) => void;
+  debug?: (msg: string) => void;
+}
+
 export interface ActionContext {
   store: BrainStore;
   embedder: EmbeddingProvider;
@@ -186,4 +194,5 @@ export interface ActionContext {
   rawText: string;
   inboxId: string;
   inputTag?: string;
+  logger: BrainLogger;
 }
