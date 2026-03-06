@@ -159,6 +159,8 @@ export interface ActionRouterConfig {
   gatewayUrl?: string;
   timezone?: string;
   extractionModel?: string;
+  /** Resolved base storage path for action data (e.g. pending actions). */
+  storagePath?: string;
 
   reminder?: {
     enabled?: boolean;
