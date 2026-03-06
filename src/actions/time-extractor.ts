@@ -6,7 +6,7 @@
 
 import type { ClassificationResult } from "../schemas.js";
 import { parseJsonFromLlm } from "../parse-llm-json.js";
-import type { TimeExtraction, ActionRouterConfig } from "./types.js";
+import type { TimeExtraction, ActionRouterConfig, BrainLogger } from "./types.js";
 
 // ============================================================================
 // LLM Time Extraction
@@ -20,6 +20,7 @@ export async function extractTime(
   rawText: string,
   classification: ClassificationResult,
   config: ActionRouterConfig,
+  logger?: BrainLogger,
 ): Promise<TimeExtraction | null> {
   const gatewayUrl = config.gatewayUrl ?? "http://127.0.0.1:18789";
   const model = config.extractionModel ?? "claude-haiku-3.5";
@@ -75,16 +76,14 @@ OUTPUT (JSON only, no markdown fences):
 
     if (!response.ok) {
       const body = await response.text();
-      console.error(
-        `[brain-actions] Time extraction failed: ${response.status} ${body.slice(0, 300)}`,
-      );
+      logger?.error(`brain: time extraction failed: ${response.status} ${body.slice(0, 300)}`);
       return null;
     }
 
     const data = (await response.json()) as any;
     const textContent = data.choices?.[0]?.message?.content;
     if (!textContent) {
-      console.error("[brain-actions] No text in LLM response");
+      logger?.error("brain: no text in LLM response for time extraction");
       return null;
     }
 
@@ -102,7 +101,7 @@ OUTPUT (JSON only, no markdown fences):
       reminderText: parsed.reminderText ?? classification.title,
     };
   } catch (err) {
-    console.error("[brain-actions] Time extraction error:", err);
+    logger?.error(`brain: time extraction error: ${err}`);
     return null;
   }
 }
