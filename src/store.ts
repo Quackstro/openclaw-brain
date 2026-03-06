@@ -298,7 +298,7 @@ export class BrainStore {
   sanitizeFilter(filter: string): string {
     // Strip out allowed tokens: identifiers, numbers, operators, string literals, parens/spaces
     // Single-quoted string literals are allowed (content can be anything since it's data, not SQL)
-    const allowed = /^(?:[a-zA-Z_][a-zA-Z0-9_.]*|[0-9]+(?:\.[0-9]+)?|'[^']*(?:''[^']*)*'|=|!=|<>|<=|>=|<|>|\s|AND|OR|NOT|\(|\))+$/i;
+    const allowed = /^(?:[a-zA-Z_][a-zA-Z0-9_.]*|-?[0-9]+(?:\.[0-9]+)?|'[^']*(?:''[^']*)*'|=|!=|<>|<=|>=|<|>|\s|AND|OR|NOT|\(|\))+$/i;
     if (!allowed.test(filter)) {
       throw new Error(`Invalid filter string: "${filter.slice(0, 100)}"`);
     }

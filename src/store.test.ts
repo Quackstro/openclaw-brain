@@ -36,8 +36,14 @@ describe("BrainStore.sanitizeFilter", () => {
     expect(() => store.sanitizeFilter("`id` = 'a'")).toThrow("Invalid filter");
   });
 
-  it("rejects unbalanced quotes with injected SQL", () => {
-    expect(() => store.sanitizeFilter("id = 'a' OR '1'='1'")).not.toThrow(); // valid SQL filter, just always-true
+  it("allows tautology conditions (always-true)", () => {
+    // This is valid syntax; preventing logical tautologies is out of scope for sanitization
+    expect(() => store.sanitizeFilter("id = 'a' OR '1'='1'")).not.toThrow();
+  });
+
+  it("allows negative numeric literals", () => {
+    expect(() => store.sanitizeFilter("offset > -10")).not.toThrow();
+    expect(() => store.sanitizeFilter("temperature >= -0.5")).not.toThrow();
   });
 
   it("allows escaped single quotes inside strings", () => {
