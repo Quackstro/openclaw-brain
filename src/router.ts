@@ -356,11 +356,13 @@ export async function mergeIntoExisting(
     nextActions: JSON.stringify(mergedActions),
   };
 
-  // Update followUpDate if the new one is more recent
+  // Update date field if the new one is more recent.
+  // Some buckets use followUpDate, others use dueDate — update whichever exists.
   if (classification.followUpDate) {
-    const existingFollowUp = (existing.followUpDate as string) || "";
-    if (!existingFollowUp || classification.followUpDate < existingFollowUp) {
-      updates.followUpDate = classification.followUpDate;
+    const dateField = "dueDate" in existing ? "dueDate" : "followUpDate";
+    const existingDate = (existing[dateField] as string) || "";
+    if (!existingDate || classification.followUpDate < existingDate) {
+      updates[dateField] = classification.followUpDate;
     }
   }
 
