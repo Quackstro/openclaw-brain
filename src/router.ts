@@ -9,6 +9,7 @@
 
 import { logAudit } from "./audit.js";
 import { bucketToTable } from "./classifier.js";
+import { buildEmptyBucketRecord } from "./record-builder.js";
 import type { ClassificationResult, EmbeddingProvider } from "./schemas.js";
 import type { BrainStore } from "./store.js";
 
@@ -101,8 +102,8 @@ export function checkConfidence(
 
 /**
  * Build a bucket record from a classification result.
- * Transforms the flat classification output into the appropriate
- * bucket-specific schema.
+ * Delegates bucket-specific schema creation to buildEmptyBucketRecord,
+ * then overlays classification-derived data (tags, nextActions, entities, dates).
  *
  * @param classification - The classification result
  * @param bucket - The target bucket table name
@@ -114,112 +115,41 @@ export function buildBucketRecord(
   bucket: string,
   inboxId: string,
 ): Record<string, unknown> {
-  const now = new Date().toISOString();
-  const entryNote = JSON.stringify([{ date: now, note: classification.summary }]);
-  const nextActions = JSON.stringify(classification.nextActions);
-  const tags = JSON.stringify(classification.tags);
+  // Get the bucket-specific skeleton with title/summary populated
+  const record = buildEmptyBucketRecord(bucket, classification.title, classification.summary);
 
-  // Common fields across all bucket types
-  const base = {
-    nextActions,
-    entries: entryNote,
-    tags,
-  };
+  // Overlay classification-derived data
+  record.nextActions = JSON.stringify(classification.nextActions);
+  record.tags = JSON.stringify(classification.tags);
 
-  switch (bucket) {
-    case "people":
-      return {
-        ...base,
-        name: classification.title,
-        context: classification.summary,
-        company: "",
-        contactInfo: "",
-        followUpDate: classification.followUpDate ?? "",
-        lastInteraction: now.split("T")[0],
-      };
-
-    case "projects":
-      return {
-        ...base,
-        name: classification.title,
-        description: classification.summary,
-        status: "active",
-        blockers: "[]",
-        relatedPeople: "[]",
-        dueDate: classification.followUpDate ?? "",
-      };
-
-    case "ideas":
-      return {
-        ...base,
-        title: classification.title,
-        description: classification.summary,
-        potential: "explore",
-        relatedTo: "[]",
-      };
-
-    case "admin":
-      return {
-        ...base,
-        title: classification.title,
-        category: inferAdminCategory(classification),
-        dueDate: classification.followUpDate ?? "",
-        recurring: "",
-      };
-
-    case "documents":
-      return {
-        ...base,
-        title: classification.title,
-        summary: classification.summary,
-        sourceUrl: "",
-        filePath: "",
-        relatedTo: "[]",
-      };
-
-    case "goals":
-      return {
-        ...base,
-        title: classification.title,
-        description: classification.summary,
-        timeframe: inferGoalTimeframe(classification),
-        status: "active",
-        milestones: "[]",
-        relatedProjects: "[]",
-      };
-
-    case "health":
-      return {
-        ...base,
-        title: classification.title,
-        category: inferHealthCategory(classification),
-        description: classification.summary,
-        provider: extractProvider(classification),
-        followUpDate: classification.followUpDate ?? "",
-      };
-
-    case "finance":
-      return {
-        ...base,
-        title: classification.title,
-        category: inferFinanceCategory(classification),
-        amount: extractAmount(classification),
-        currency: "",
-        dueDate: classification.followUpDate ?? "",
-        recurring: "",
-      };
-
-    default:
-      // Generic bucket record
-      return {
-        ...base,
-        title: classification.title,
-        description: classification.summary,
-        category: "",
-        status: "active",
-        dueDate: classification.followUpDate ?? "",
-      };
+  // Enrich with classification-specific fields
+  if (classification.followUpDate) {
+    if ("followUpDate" in record) record.followUpDate = classification.followUpDate;
+    if ("dueDate" in record) record.dueDate = classification.followUpDate;
   }
+
+  // Bucket-specific enrichment from classification
+  switch (bucket) {
+    case "admin":
+      record.category = inferAdminCategory(classification);
+      break;
+    case "goals":
+      record.timeframe = inferGoalTimeframe(classification);
+      break;
+    case "health":
+      record.category = inferHealthCategory(classification);
+      record.provider = extractProvider(classification);
+      break;
+    case "finance": {
+      const finCat = inferFinanceCategory(classification);
+      if (finCat !== "bill") record.category = finCat; // only override skeleton default on strong signal
+      const amount = extractAmount(classification);
+      if (amount > 0) record.amount = amount; // only override skeleton default when amount found
+      break;
+    }
+  }
+
+  return record;
 }
 
 // ============================================================================
@@ -429,11 +359,13 @@ export async function mergeIntoExisting(
     nextActions: JSON.stringify(mergedActions),
   };
 
-  // Update followUpDate if the new one is more recent
+  // Update date field if the new one is sooner (earlier date takes priority).
+  // Some buckets use followUpDate, others use dueDate — update whichever exists.
   if (classification.followUpDate) {
-    const existingFollowUp = (existing.followUpDate as string) || "";
-    if (!existingFollowUp || classification.followUpDate < existingFollowUp) {
-      updates.followUpDate = classification.followUpDate;
+    const dateField = "dueDate" in existing ? "dueDate" : "followUpDate";
+    const existingDate = (existing[dateField] as string) || "";
+    if (!existingDate || classification.followUpDate < existingDate) {
+      updates[dateField] = classification.followUpDate;
     }
   }
 
