@@ -1,14 +1,27 @@
 {
   "name": "@quackstro/openclaw-brain",
-  "version": "2026.3.5",
-  "private": true,
+  "version": "2026.3.13",
   "type": "module",
   "description": "Brain — behavioral memory system for OpenClaw. Auto-classifies thoughts into semantic buckets with action detection.",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
   "scripts": {
+    "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": ["openclaw", "plugin", "memory", "brain", "semantic-search", "lancedb"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Quackstro/openclaw-brain.git"
+  },
+  "license": "MIT",
   "dependencies": {
     "@lancedb/lancedb": "^0.26.2",
     "@sinclair/typebox": "0.34.48"
@@ -19,7 +32,7 @@
   },
   "openclaw": {
     "extensions": [
-      "./src/index.ts"
+      "./dist/index.js"
     ]
   }
 }

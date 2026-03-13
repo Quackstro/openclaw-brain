@@ -5,3 +5,4 @@ brain/lancedb/
 .env
 extensions/
 package-lock.json
+*.tsbuildinfo
