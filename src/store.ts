@@ -72,7 +72,11 @@ export class BrainStore {
   async ensureInitialized(): Promise<void> {
     if (this.db && this.tables.size === this.allTables.length) return;
     if (this.initPromise) return this.initPromise;
-    this.initPromise = this.doInitialize();
+    this.initPromise = this.doInitialize().catch((err) => {
+      // Reset so the next call retries instead of returning a stale rejection
+      this.initPromise = null;
+      throw err;
+    });
     return this.initPromise;
   }
 
