@@ -58,7 +58,17 @@ export function extractPaymentParams(classification: any, rawText: string): Paym
 // Pending Action Storage
 // ============================================================================
 
-const PENDING_ACTIONS_DIR = join(homedir(), ".openclaw", "brain", "pending-actions");
+/**
+ * Resolve the pending actions directory from config or fall back to
+ * a `pending-actions` sibling of the configured DB path.
+ */
+function resolvePendingActionsDir(config: { storagePath?: string }): string {
+  if (config.storagePath) {
+    return join(config.storagePath, "pending-actions");
+  }
+  // Fallback: ~/.openclaw/brain/pending-actions (legacy default)
+  return join(homedir(), ".openclaw", "brain", "pending-actions");
+}
 
 interface PendingAction {
   id: string;
@@ -73,10 +83,10 @@ interface PendingAction {
   error?: string;
 }
 
-async function savePendingAction(action: PendingAction): Promise<void> {
-  await mkdir(PENDING_ACTIONS_DIR, { recursive: true });
-  const path = join(PENDING_ACTIONS_DIR, `${action.id}.json`);
-  await writeFile(path, JSON.stringify(action, null, 2));
+async function savePendingAction(action: PendingAction, dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  const filePath = join(dir, `${action.id}.json`);
+  await writeFile(filePath, JSON.stringify(action, null, 2));
 }
 
 // ============================================================================
@@ -94,6 +104,7 @@ async function savePendingAction(action: PendingAction): Promise<void> {
  */
 export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentActionResult> {
   const { store, embedder, config, classification, rawText, inboxId, hooks } = ctx;
+  const pendingDir = resolvePendingActionsDir(config);
 
   // 1. Extract payment parameters
   const params = extractPaymentParams(classification, rawText);
@@ -168,7 +179,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
   if (shouldAutoExecute) {
     // Auto-execute
     pendingAction.status = "executing";
-    await savePendingAction(pendingAction);
+    await savePendingAction(pendingAction, pendingDir);
 
     try {
       const result = await hooks.onPaymentExecute!(params, resolution);
@@ -177,7 +188,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
         pendingAction.status = "complete";
         pendingAction.txid = result.txid;
         pendingAction.updatedAt = new Date().toISOString();
-        await savePendingAction(pendingAction);
+        await savePendingAction(pendingAction, pendingDir);
 
         const details = `Auto-executed ${params.amount} ${params.currency} to ${resolution.recipientName || params.recipient}`;
         await logAudit(store, {
@@ -214,7 +225,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
         pendingAction.status = "failed";
         pendingAction.error = result.error;
         pendingAction.updatedAt = new Date().toISOString();
-        await savePendingAction(pendingAction);
+        await savePendingAction(pendingAction, pendingDir);
 
         return {
           action: "payment-failed",
@@ -228,7 +239,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
       pendingAction.status = "failed";
       pendingAction.error = String(err);
       pendingAction.updatedAt = new Date().toISOString();
-      await savePendingAction(pendingAction);
+      await savePendingAction(pendingAction, pendingDir);
 
       return {
         action: "payment-failed",
@@ -242,7 +253,7 @@ export async function handlePaymentAction(ctx: ActionContext): Promise<PaymentAc
 
   // 5. Request approval
   pendingAction.status = "awaiting-approval";
-  await savePendingAction(pendingAction);
+  await savePendingAction(pendingAction, pendingDir);
 
   const details = `Proposed ${params.amount} ${params.currency} to ${resolution.recipientName || params.recipient} (awaiting approval)`;
   await logAudit(store, {
