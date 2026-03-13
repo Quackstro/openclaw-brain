@@ -188,7 +188,7 @@ export async function handleDrop(
           try {
             await options.onClassified(classification, inboxId, textForClassification, inputTag);
           } catch (err) {
-            console.error(`[brain-core] onClassified hook error (non-fatal):`, err);
+            // onClassified hook error is non-fatal — swallow silently
           }
         }
       } catch (err) {

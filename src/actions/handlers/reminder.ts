@@ -15,6 +15,7 @@ import type {
   TimeExtraction,
   PersistentReminderResult,
   ActionRouterConfig,
+  BrainLogger,
 } from "../types.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,7 +24,7 @@ const execFileAsync = promisify(execFile);
 // Cron Job Helpers
 // ============================================================================
 
-async function cronAdd(args: string[]): Promise<string | null> {
+async function cronAdd(args: string[], logger?: BrainLogger): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync("openclaw", ["cron", "add", ...args], {
       timeout: 15000,
@@ -52,7 +53,7 @@ async function cronAdd(args: string[]): Promise<string | null> {
     const result = JSON.parse(jsonStr.trim());
     return result?.id ?? result?.jobId ?? null;
   } catch (err) {
-    console.error("[brain-actions] Failed to create cron job:", err);
+    logger?.error(`brain: failed to create cron job: ${err}`);
     return null;
   }
 }
@@ -113,6 +114,7 @@ function buildAgentMessage(reminderText: string, nagJobId: string, enableNag: bo
 export async function createPersistentReminder(
   extraction: TimeExtraction,
   config: ActionRouterConfig,
+  logger?: BrainLogger,
 ): Promise<PersistentReminderResult | null> {
   const timezone = config.timezone ?? "America/New_York";
   const nagIntervalMin = config.reminder?.nagIntervalMinutes ?? 5;
@@ -132,10 +134,10 @@ export async function createPersistentReminder(
     nagMessage,
     "--disabled",
     "--json",
-  ]);
+  ], logger);
 
   if (!nagJobId) {
-    console.error("[brain-actions] Failed to create nag job");
+    logger?.error("brain: failed to create nag job");
     return null;
   }
 
@@ -158,7 +160,7 @@ export async function createPersistentReminder(
       "--message",
       recurringMessage,
       "--json",
-    ]);
+    ], logger);
 
     if (recurringJobId) {
       await cronRemove(nagJobId); // Not needed for recurring
@@ -192,10 +194,10 @@ export async function createPersistentReminder(
     triggerMessage,
     "--delete-after-run",
     "--json",
-  ]);
+  ], logger);
 
   if (!triggerJobId) {
-    console.error("[brain-actions] Failed to create trigger job");
+    logger?.error("brain: failed to create trigger job");
     await cronRemove(nagJobId);
     return null;
   }
@@ -219,7 +221,7 @@ export async function handleReminderAction(ctx: ActionContext): Promise<ActionRe
   const timezone = config.timezone ?? "America/New_York";
 
   // Extract time via LLM
-  const extraction = await extractTime(rawText, classification, config);
+  const extraction = await extractTime(rawText, classification, config, ctx.logger);
   if (!extraction) {
     await logAudit(store, {
       action: "action-routed",
@@ -235,7 +237,7 @@ export async function handleReminderAction(ctx: ActionContext): Promise<ActionRe
   }
 
   // Create persistent reminder
-  const result = await createPersistentReminder(extraction, config);
+  const result = await createPersistentReminder(extraction, config, ctx.logger);
   if (!result) {
     return { action: "no-action", details: "Failed to create cron jobs" };
   }
