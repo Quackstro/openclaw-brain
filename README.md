@@ -119,87 +119,43 @@ All three do the same thing. Brain captures it, classifies it as **admin** (appo
 
 ## Everyday Use
 
-### Slash Commands
+### Auto-Classification
 
-Brain registers a `/brain` slash command that works directly in Telegram (and other channels) **without invoking the AI agent**.
+Every drop goes through Brain's **automatic classification pipeline**:
 
-> **💡 Why slash commands matter:**
->
-> - ⚡ **Instant**: No LLM round-trip. Results come back in milliseconds, not seconds.
-> - 💰 **Zero token cost**: Slash commands don't consume any AI tokens.
-> - 🧹 **No context pollution**: The biggest advantage. Slash commands don't add messages to your chat history. When you drop a thought via `/brain drop`, it doesn't eat into your conversation window. Your chat context stays focused on the current task, not cluttered with brain operations.
-> - 🔒 **Deterministic**: Same input, same output. No LLM interpretation or hallucination risk.
+1. **Tag Parse** — Bracket tags like `[ToDo]`, `[Reminder]` are detected and stripped
+2. **Embed** — The text is converted to a vector via your configured embedding model
+3. **Inbox** — The raw drop is saved with timestamp, source, and vector
+4. **Classify** — An LLM analyzes the text and returns structured JSON: bucket, confidence, title, summary, next actions, entities, urgency, and detected intent
+5. **Route** — If confidence ≥ threshold (default 0.80), the drop is automatically routed to the target bucket. Below threshold, it goes to **needs_review**
+6. **Dedup** — Before creating a new record, cosine similarity checks for near-duplicates (≥0.92). Matches are auto-merged instead of duplicated
+7. **Action Detect** — The action router scans for time-sensitive intents (reminders, payments, todos) and creates cron jobs or approval flows
 
-Use slash commands for quick captures, lookups, and status checks. Use the agent tools (via natural chat) when you need conversational follow-ups or complex queries like "search my brain for that thing my neighbor mentioned about 3D printing."
+All of this happens asynchronously after the initial "✅ Captured" acknowledgment, so the user is never blocked.
 
-#### `/brain`
+### Auto-Capture
 
-Show the Brain dashboard with bucket counts and DND status.
+When `autoCapture: true`, Brain passively listens to all conversations and automatically captures noteworthy messages — without any explicit `/drop` or tool call.
 
-```
-🧠 Brain 2.0 Dashboard
+**How it works:**
+- Hooks into the `message_received` event
+- Filters out short messages (<20 chars), trivial acks ("ok", "thanks", "lol"), greetings, and emoji-only messages
+- Requires at least 4 words of substance
+- Qualifying messages are silently dropped into the Brain and classified
 
-  people: 2
-  projects: 37
-  ideas: 11
-  ...
+This means information shared in casual conversation (names, dates, project updates, health notes) gets captured without you having to remember to drop it.
 
-🔔 DND: OFF
+### Auto-Recall
 
-Commands: drop, search, stats, dnd
-```
+When `autoRecall: true`, Brain automatically injects relevant memories into the system prompt before each agent turn.
 
-#### `/drop <text>`
+**How it works:**
+- Hooks into the `before_agent_start` event
+- Embeds the user's prompt and searches all buckets
+- Top matches (up to `autoRecallLimit`, default 3) above `autoRecallMinScore` (default 0.3) are formatted and prepended to the agent's context
+- The agent sees a "Relevant Memories" section with matching records from your Brain
 
-The fastest way to capture a thought. Shortcut for `/brain drop`.
-
-```
-/drop Call dentist about appointment next Tuesday
-```
-→ `✅ Captured [ToDo]` (with ID)
-
-#### `/brain drop <text>`
-
-Same as `/drop`, for when you want the full command.
-
-```
-/brain drop Pick up prescription tomorrow
-```
-→ `✅ Captured` (with ID)
-
-#### `/brain search <query>`
-
-Semantic search across all buckets. Returns top 5 matches with scores.
-
-```
-/brain search mobile app project status
-```
-→ 
-```
-🔍 Found 5 results:
-
-1. [projects] Mobile App Redesign (92%)
-2. [projects] Payment Integration (78%)
-3. [admin] Weekly report schedule (71%)
-...
-```
-
-#### `/brain stats`
-
-Show record counts per bucket (same as the dashboard stats section).
-
-#### `/brain dnd [on|off|status]`
-
-Control Do Not Disturb mode directly.
-
-```
-/brain dnd on      → 🔇 Do Not Disturb enabled.
-/brain dnd off     → 🔔 Do Not Disturb disabled.
-/brain dnd status  → 🔇 DND is ON: Manual override
-/brain dnd         → (same as status)
-```
-
-> **💡 Tip:** For routine Brain operations (quick drops, status checks, DND toggles), always prefer slash commands. Reserve agent tools for when you need the AI to reason about your query, e.g., "what was that project idea I had last week about security cameras?"
+This gives the AI contextual awareness of your stored knowledge without you asking. For example, if you mention "Sarah" in conversation and you have a people record for Sarah, the agent automatically sees her context, company, and last interaction.
 
 ### Natural Language
 
@@ -316,13 +272,22 @@ DND state is persisted to `~/.openclaw/brain/dnd-state.json` and survives restar
 
 ### Searching
 
-Use `brain_search` to find anything across your Brain by semantic similarity.
+Brain offers two search tools:
+
+- **`brain_search`** — Raw semantic search. Returns IDs, bucket names, and similarity scores. Best for programmatic use.
+- **`brain_recall`** — Human-readable search. Returns formatted results with titles, summaries, next actions, and tags. Best for user-facing queries.
 
 ```
-brain_search("Sarah from Acme")
-→ Found 2 results:
-  1. [people] Sarah, Acme Corp ML Infrastructure (87%)
-  2. [projects] Acme Partnership (62%)
+brain_recall("Sarah from Acme")
+→ 🧠 Found 2 results for "Sarah from Acme":
+
+  **Sarah, Acme Corp** [people] (87% match)
+    Met at conference, works on ML infrastructure
+    → Send follow-up email
+    🏷️ networking, ML
+
+  **Acme Partnership** [projects] (62% match)
+    Joint project discussion
 ```
 
 You can also limit to a specific bucket:
