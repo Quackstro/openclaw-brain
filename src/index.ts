@@ -771,7 +771,7 @@ const brainPlugin = {
               };
             }
 
-            const data = await gatherDigestData(store, digestType, cfg.buckets);
+            const data = await gatherDigestData(store, digestType, cfg.buckets, cfg.dnd.timezone);
             const formatted = formatDigest(data, digestType);
             return {
               content: [{ type: "text", text: formatted }],
@@ -821,9 +821,17 @@ const brainPlugin = {
 
             const on = params.action === "on";
             const result = await toggleDnd(on);
-            const text = on
-              ? "🔇 Do Not Disturb enabled."
-              : `🔔 Do Not Disturb disabled.${result.recovery ? `\n${result.recovery}` : ""}`;
+            let text: string;
+            if (on) {
+              text = "🔇 Do Not Disturb enabled.";
+            } else {
+              // Check if auto-quiet is still active after manual off
+              const postStatus = await checkDnd(dndConfig);
+              text = postStatus.quiet
+                ? `🔔 Manual DND disabled, but auto-quiet is still active (${postStatus.reason}).`
+                : "🔔 Do Not Disturb disabled.";
+              if (result.recovery) text += `\n${result.recovery}`;
+            }
             return {
               content: [{ type: "text", text }],
               details: { manualDnd: result.state.manualDnd, recovery: result.recovery },
@@ -854,7 +862,7 @@ const brainPlugin = {
         try {
           const result = await handleDrop(
             store, embedder, text, "drop", undefined,
-            { classifierFn, confidenceThreshold: cfg.confidenceThreshold, async: false, buckets: cfg.buckets },
+            { classifierFn, confidenceThreshold: cfg.confidenceThreshold, async: true, buckets: cfg.buckets },
           );
           return { text: `✅ ${result.message}\nID: ${result.id}` };
         } catch (err: any) {
@@ -872,13 +880,14 @@ const brainPlugin = {
         const args = ctx.args?.trim() ?? "";
 
         // /brain drop <text>
+        if (args === "drop") return { text: "Usage: /brain drop <text>" };
         if (args.startsWith("drop ")) {
           const text = args.slice(5).trim();
           if (!text) return { text: "Usage: /brain drop <text>" };
           try {
             const result = await handleDrop(
               store, embedder, text, "drop", undefined,
-              { classifierFn, confidenceThreshold: cfg.confidenceThreshold, async: false, buckets: cfg.buckets },
+              { classifierFn, confidenceThreshold: cfg.confidenceThreshold, async: true, buckets: cfg.buckets },
             );
             return { text: `✅ ${result.message}\nID: ${result.id}` };
           } catch (err: any) {
@@ -887,6 +896,7 @@ const brainPlugin = {
         }
 
         // /brain search <query>
+        if (args === "search") return { text: "Usage: /brain search <query>" };
         if (args.startsWith("search ")) {
           const query = args.slice(7).trim();
           if (!query) return { text: "Usage: /brain search <query>" };
@@ -920,11 +930,17 @@ const brainPlugin = {
             if (sub === "on" || sub === "off") {
               const on = sub === "on";
               const result = await toggleDnd(on);
-              return {
-                text: on
-                  ? "🔇 Do Not Disturb enabled."
-                  : `🔔 Do Not Disturb disabled.${result.recovery ? `\n${result.recovery}` : ""}`,
-              };
+              let msg: string;
+              if (on) {
+                msg = "🔇 Do Not Disturb enabled.";
+              } else {
+                const postStatus = await checkDnd(dndConfig);
+                msg = postStatus.quiet
+                  ? `🔔 Manual DND disabled, but auto-quiet is still active (${postStatus.reason}).`
+                  : "🔔 Do Not Disturb disabled.";
+                if (result.recovery) msg += `\n${result.recovery}`;
+              }
+              return { text: msg };
             }
             return { text: "Usage: /brain dnd [on|off|status]" };
           } catch (err: any) {

@@ -134,7 +134,7 @@ Brain registers `/drop` and `/brain` slash commands that work directly in Telegr
 
 The fastest way to capture a thought.
 
-```
+```text
 /drop Call dentist about appointment next Tuesday
 ```
 → `✅ Captured [ToDo]` (with ID)
@@ -143,7 +143,7 @@ The fastest way to capture a thought.
 
 Dashboard with bucket counts and DND status.
 
-```
+```text
 🧠 Brain Dashboard
 
   people: 2
@@ -172,7 +172,7 @@ Show record counts per bucket.
 
 Control Do Not Disturb mode.
 
-```
+```text
 /brain dnd on      → 🔇 Do Not Disturb enabled.
 /brain dnd off     → 🔔 Do Not Disturb disabled.
 /brain dnd status  → 🔇 DND is ON: Manual override

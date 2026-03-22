@@ -98,17 +98,19 @@ export const DIGEST_DEFAULTS: Record<DigestType, { maxWords: number }> = {
 // Helpers
 // ============================================================================
 
-/** Get today's date string in YYYY-MM-DD format (ET timezone). */
-function getTodayET(): string {
-  const now = new Date();
-  return now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+/** Module-level timezone, set during gatherDigestData. Defaults to ET. */
+let _digestTimezone = "America/New_York";
+
+/** Get today's date string in YYYY-MM-DD format in the configured timezone. */
+function getToday(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: _digestTimezone });
 }
 
-/** Get a date N days ago in YYYY-MM-DD format. */
+/** Get a date N days ago in YYYY-MM-DD format in the configured timezone. */
 function daysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString("en-CA", { timeZone: _digestTimezone });
 }
 
 /** Parse a JSON string safely, returning a default on failure. */
@@ -184,11 +186,15 @@ export async function gatherDigestData(
   store: BrainStore,
   type: DigestType,
   buckets?: readonly string[],
+  timezone?: string,
 ): Promise<DigestData> {
+  if (timezone) _digestTimezone = timezone;
   const maxWords = DIGEST_DEFAULTS[type].maxWords;
-  const today = getTodayET();
+  const today = getToday();
   const threeDaysAgo = daysAgo(3);
   const oneDayAgo = daysAgo(1);
+  const sevenDaysAgo = daysAgo(7);
+  const activityLookback = type === "weekly" ? sevenDaysAgo : oneDayAgo;
 
   const bucketSummaries: BucketSummary[] = [];
   const overdueItems: OverdueItem[] = [];
@@ -261,26 +267,24 @@ export async function gatherDigestData(
       }
 
       // Check urgency fields (from classification metadata)
-      // People records don't have urgency directly, but classified items
-      // might have it in their entries/tags
-      // For now, check if dueDate is today → urgent
-      if (dueDate === today) {
+      const urgency = record.urgency as string | undefined;
+      if (urgency === "now" || urgency === "today" || dueDate === today) {
         urgentItems.push({
           id,
           bucket,
           title: label,
-          urgency: "today",
+          urgency: urgency ?? "today",
           nextAction: firstAction,
         });
       }
 
       // Collect recent activity (last 24h entries) for afternoon/night digests
-      if (latestEntry && latestEntry >= oneDayAgo) {
+      if (latestEntry && latestEntry >= activityLookback) {
         const entries = safeParseJSON<Array<{ date: string; note: string }>>(
           record.entries,
           [],
         );
-        const recentEntries = entries.filter((e) => e.date >= oneDayAgo);
+        const recentEntries = entries.filter((e) => e.date >= activityLookback);
         for (const entry of recentEntries) {
           recentActivity.push({
             id,
@@ -721,11 +725,13 @@ function capitalize(s: string): string {
  * Soft limit — prioritizes readability over exact count.
  */
 function truncateToWords(text: string, maxWords: number): string {
-  const words = text.split(/\s+/);
+  const words = [...text.matchAll(/\S+/g)];
   if (words.length <= maxWords) return text;
 
-  // Find the line break nearest to the word limit
-  const truncated = words.slice(0, maxWords).join(" ");
+  // Slice the original text at the position of the Nth word to preserve line breaks
+  const end = words[maxWords]?.index ?? text.length;
+  const truncated = text.slice(0, end).trimEnd();
+
   // Try to end at a newline for cleaner output
   const lastNewline = truncated.lastIndexOf("\n");
   if (lastNewline > truncated.length * 0.7) {

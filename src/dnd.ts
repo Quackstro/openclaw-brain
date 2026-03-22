@@ -4,13 +4,14 @@
  * Phase 2: Surface layer — controls when digests/nudges are sent.
  *
  * Features:
- * - Auto-quiet hours: 10PM–7AM ET (configurable)
- * - Manual override: /dnd on / /dnd off
- * - DND state persisted to ~/.openclaw/brain/dnd-state.json
+ * - Auto-quiet hours: 2AM–6AM (configurable via dnd.autoQuiet.from/to)
+ * - Manual override: /brain dnd on / /brain dnd off
+ * - DND state persisted to configurable path (via setDndStatePath)
  * - Recovery: when DND ends, generates ONE summary (not a flood)
  */
 
 import fs from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 // ============================================================================
@@ -65,7 +66,6 @@ export function setDndStatePath(storagePath: string): void {
 function getDndStatePath(): string {
   if (_dndStatePath) return _dndStatePath;
   // Fallback
-  const { homedir } = require("node:os") as typeof import("node:os");
   return path.join(homedir(), ".openclaw", "brain", "dnd-state.json");
 }
 
