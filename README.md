@@ -119,6 +119,65 @@ All three do the same thing. Brain captures it, classifies it as **admin** (appo
 
 ## Everyday Use
 
+### Slash Commands
+
+Brain registers `/drop` and `/brain` slash commands that work directly in Telegram (and other channels) **without invoking the AI agent**.
+
+> **💡 Why slash commands matter:**
+>
+> - ⚡ **Instant**: No LLM round-trip. Results come back in milliseconds, not seconds.
+> - 💰 **Zero token cost**: Slash commands don't consume any AI tokens.
+> - 🧹 **No context pollution**: Slash commands don't add messages to your chat history.
+> - 🔒 **Deterministic**: Same input, same output. No LLM interpretation.
+
+#### `/drop <text>`
+
+The fastest way to capture a thought.
+
+```text
+/drop Call dentist about appointment next Tuesday
+```
+→ `✅ Captured [ToDo]` (with ID)
+
+#### `/brain`
+
+Dashboard with bucket counts and DND status.
+
+```text
+🧠 Brain Dashboard
+
+  people: 2
+  projects: 37
+  ideas: 11
+  ...
+
+🔔 DND: OFF
+
+Commands: drop, search, stats, dnd
+```
+
+#### `/brain drop <text>`
+
+Same as `/drop`.
+
+#### `/brain search <query>`
+
+Semantic search across all buckets with formatted results.
+
+#### `/brain stats`
+
+Show record counts per bucket.
+
+#### `/brain dnd [on|off|status]`
+
+Control Do Not Disturb mode.
+
+```text
+/brain dnd on      → 🔇 Do Not Disturb enabled.
+/brain dnd off     → 🔔 Do Not Disturb disabled.
+/brain dnd status  → 🔇 DND is ON: Manual override
+```
+
 ### Auto-Classification
 
 Every drop goes through Brain's **automatic classification pipeline**:
@@ -219,10 +278,8 @@ There are also **3 system tables**: `inbox` (pending drops), `needs_review` (low
 
 ## Staying on Track
 
-### Digests (Pinky 🤙) — *Planned*
+### Digests (Pinky 🤙)
 
-> ⚠️ **Digests are not yet implemented in the current version.** The design below describes the planned feature.
->
 > Digests are intentionally small. Bite-sized summaries you can scan and act on in seconds, not minutes. This is a core design principle: if a digest requires effort to read, it's failed. Word limits are enforced per digest type to keep them tight and actionable.
 
 Brain generates **5 types of digests** to keep you on track throughout the day:
@@ -401,7 +458,7 @@ All options live under the `brain` key in your OpenClaw plugin config.
 |--------|------|---------|-------------|
 | `storage.dbPath` | string | `~/.openclaw/brain/lancedb` | Path to the LanceDB database directory |
 
-#### Digests *(planned — not yet implemented)*
+#### Digests
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -572,6 +629,8 @@ User Input
 | `brain_recall` | `query` (required), `bucket`, `limit` | Human-readable memory recall with formatted output |
 | `brain_stats` | *(none)* | Show record counts and health for all buckets |
 | `brain_audit` | `inputId`, `limit` | View audit trail for a specific item or recent actions |
+| `brain_digest` | `type` (required): morning, midday, afternoon, night, weekly | Generate a digest (respects DND) |
+| `brain_dnd` | `action` (required): status, on, off | Control Do Not Disturb mode |
 | `brain_fix` | `id` (required), `correction` | Fix/move/trash/merge/inspect a Brain item |
 
 **`brain_fix` correction syntax:**

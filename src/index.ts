@@ -18,6 +18,11 @@ import { createEmbeddingProvider, getVectorDimension } from "./embeddings.js";
 import { DEFAULT_BUCKETS, SYSTEM_TABLES, type EmbeddingProvider } from "./schemas.js";
 import { BrainStore } from "./store.js";
 import { isMessageNoteworthy } from "./noteworthy.js";
+import { gatherDigestData, formatDigest, generateNudges, type DigestType } from "./digest.js";
+import {
+  checkDnd, toggleDnd, recordSkippedDigest, setDndStatePath,
+  type DndConfig, DEFAULT_DND_CONFIG,
+} from "./dnd.js";
 
 // Actions imports
 import { routeAction, shouldRouteAction } from "./actions/action-router.js";
@@ -78,6 +83,34 @@ export {
   type RecallOptions,
 } from "./commands/recall.js";
 
+// Digest re-exports
+export {
+  gatherDigestData,
+  formatDigest,
+  generateNudges,
+  type DigestType,
+  type DigestData,
+  type BucketSummary,
+  type OverdueItem,
+  type StuckItem,
+  type UrgentItem,
+  type NudgeItem,
+} from "./digest.js";
+export {
+  checkDnd,
+  toggleDnd,
+  recordSkippedDigest,
+  isInQuietHours,
+  getNowInTimezone,
+  loadDndState,
+  saveDndState,
+  setDndStatePath,
+  DEFAULT_DND_CONFIG,
+  type DndState,
+  type DndCheckResult,
+  type DndConfig,
+} from "./dnd.js";
+
 // Actions re-exports
 export * from "./actions/types.js";
 export * from "./actions/detector.js";
@@ -112,6 +145,14 @@ interface BrainConfig {
   autoRecall: boolean;
   autoRecallLimit: number;
   autoRecallMinScore: number;
+  dnd: {
+    autoQuiet: {
+      enabled: boolean;
+      from: string;
+      to: string;
+    };
+    timezone: string;
+  };
   actions: {
     enabled: boolean;
     gatewayToken?: string;
@@ -144,6 +185,10 @@ function parseConfig(raw: unknown): BrainConfig | null {
   const classRaw = (cfg.classifier ?? {}) as Record<string, unknown>;
   const bucketsRaw = cfg.buckets as string[] | undefined;
 
+  // DND config
+  const dndRaw = (cfg.dnd ?? {}) as Record<string, unknown>;
+  const autoQuietRaw = (dndRaw.autoQuiet ?? {}) as Record<string, unknown>;
+
   // Actions config
   const actRaw = (cfg.actions ?? {}) as Record<string, unknown>;
   const reminderRaw = (actRaw.reminder ?? {}) as Record<string, unknown>;
@@ -169,6 +214,14 @@ function parseConfig(raw: unknown): BrainConfig | null {
     autoRecall: (cfg.autoRecall as boolean) ?? false,
     autoRecallLimit: (cfg.autoRecallLimit as number) ?? 3,
     autoRecallMinScore: (cfg.autoRecallMinScore as number) ?? 0.3,
+    dnd: {
+      autoQuiet: {
+        enabled: autoQuietRaw.enabled !== false,
+        from: (autoQuietRaw.from as string) ?? "02:00",
+        to: (autoQuietRaw.to as string) ?? "06:00",
+      },
+      timezone: (dndRaw.timezone as string) ?? "America/New_York",
+    },
     actions: {
       enabled: actRaw.enabled !== false,
       gatewayToken: actRaw.gatewayToken as string | undefined,
@@ -211,6 +264,10 @@ const brainPlugin = {
     }
 
     const resolvedDbPath = api.resolvePath(cfg.storage.dbPath);
+    const storagePath = path.dirname(resolvedDbPath);
+
+    // Initialize DND state path
+    setDndStatePath(storagePath);
 
     // Create embedding provider
     const embedder = createEmbeddingProvider({
@@ -676,6 +733,219 @@ const brainPlugin = {
         return await routeAction(ctx);
       };
     }
+
+    // ==================================================================
+    // Tool: brain_digest
+    // ==================================================================
+
+    const dndConfig: DndConfig = {
+      autoQuiet: cfg.dnd.autoQuiet,
+      timezone: cfg.dnd.timezone,
+    };
+
+    /** Shared DND handler for both tool and slash command. */
+    async function handleDndAction(action: string): Promise<{ text: string; quiet?: boolean; recovery?: string }> {
+      if (action === "status") {
+        const status = await checkDnd(dndConfig);
+        return {
+          text: status.quiet ? `🔇 DND is ON: ${status.reason}` : `🔔 DND is OFF: ${status.reason}`,
+          quiet: status.quiet,
+        };
+      }
+      const on = action === "on";
+      const result = await toggleDnd(on);
+      let text: string;
+      if (on) {
+        text = "🔇 Do Not Disturb enabled.";
+      } else {
+        const postStatus = await checkDnd(dndConfig);
+        text = postStatus.quiet
+          ? `🔔 Manual DND disabled, but auto-quiet is still active (${postStatus.reason}).`
+          : "🔔 Do Not Disturb disabled.";
+        if (result.recovery) text += `\n${result.recovery}`;
+      }
+      return { text, recovery: result.recovery };
+    }
+
+    api.registerTool(
+      {
+        name: "brain_digest",
+        label: "Brain Digest",
+        description:
+          "Generate a concise digest of your Brain status. Types: morning (top actions + overdue), " +
+          "midday (due today + stuck), afternoon (what moved + carries), night (tomorrow's priorities), " +
+          "weekly (bucket health + focus + wins). Respects DND.",
+        parameters: Type.Object({
+          type: Type.String({
+            description: "Digest type: morning, midday, afternoon, night, weekly",
+            enum: ["morning", "midday", "afternoon", "night", "weekly"],
+          }),
+        }),
+        async execute(_toolCallId: string, params: any) {
+          try {
+            const digestType = params.type as DigestType;
+
+            // Check DND
+            const dndStatus = await checkDnd(dndConfig);
+            if (dndStatus.quiet) {
+              await recordSkippedDigest(digestType);
+              return {
+                content: [{ type: "text", text: `🔇 DND is active (${dndStatus.reason}). Digest skipped and recorded.` }],
+                details: { skipped: true, reason: dndStatus.reason },
+              };
+            }
+
+            const data = await gatherDigestData(store, digestType, cfg.buckets, cfg.dnd.timezone);
+            const formatted = formatDigest(data, digestType);
+            return {
+              content: [{ type: "text", text: formatted }],
+              details: { type: digestType, isEmpty: data.isEmpty },
+            };
+          } catch (err: any) {
+            return {
+              content: [{ type: "text", text: `Digest failed: ${err.message ?? err}` }],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { name: "brain_digest" },
+    );
+
+    // ==================================================================
+    // Tool: brain_dnd
+    // ==================================================================
+
+    api.registerTool(
+      {
+        name: "brain_dnd",
+        label: "Brain DND",
+        description:
+          "Control Do Not Disturb mode. When active, digests are skipped and recorded for catch-up later.",
+        parameters: Type.Object({
+          action: Type.String({
+            description: "Action: status, on, off",
+            enum: ["status", "on", "off"],
+          }),
+        }),
+        async execute(_toolCallId: string, params: any) {
+          try {
+            const result = await handleDndAction(params.action);
+            return {
+              content: [{ type: "text", text: result.text }],
+              details: { quiet: result.quiet, recovery: result.recovery },
+            };
+          } catch (err: any) {
+            return {
+              content: [{ type: "text", text: `DND failed: ${err.message ?? err}` }],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { name: "brain_dnd" },
+    );
+
+    // ==================================================================
+    // Slash Commands (auto-reply, no LLM)
+    // ==================================================================
+
+    api.registerCommand({
+      name: "drop",
+      description: "Quick-capture a thought into Brain",
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: async (ctx: any) => {
+        const text = ctx.args?.trim() ?? "";
+        if (!text) return { text: "Usage: /drop <text>" };
+        try {
+          const result = await handleDrop(
+            store, embedder, text, "drop", undefined,
+            { classifierFn, confidenceThreshold: cfg.confidenceThreshold, async: true, buckets: cfg.buckets },
+          );
+          return { text: `✅ ${result.message}\nID: ${result.id}` };
+        } catch (err: any) {
+          return { text: `❌ Drop failed: ${err.message ?? err}` };
+        }
+      },
+    });
+
+    api.registerCommand({
+      name: "brain",
+      description: "Brain dashboard & commands",
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: async (ctx: any) => {
+        const args = ctx.args?.trim() ?? "";
+
+        // /brain drop <text>
+        if (args === "drop") return { text: "Usage: /brain drop <text>" };
+        if (args.startsWith("drop ")) {
+          const text = args.slice(5).trim();
+          if (!text) return { text: "Usage: /brain drop <text>" };
+          try {
+            const result = await handleDrop(
+              store, embedder, text, "drop", undefined,
+              { classifierFn, confidenceThreshold: cfg.confidenceThreshold, async: true, buckets: cfg.buckets },
+            );
+            return { text: `✅ ${result.message}\nID: ${result.id}` };
+          } catch (err: any) {
+            return { text: `❌ Drop failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain search <query>
+        if (args === "search") return { text: "Usage: /brain search <query>" };
+        if (args.startsWith("search ")) {
+          const query = args.slice(7).trim();
+          if (!query) return { text: "Usage: /brain search <query>" };
+          try {
+            const result = await handleRecall(store, embedder, query, { limit: 5 });
+            return { text: formatRecallResults(result) };
+          } catch (err: any) {
+            return { text: `❌ Search failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain stats
+        if (args === "stats") {
+          try {
+            const stats = await store.stats();
+            const lines = stats.map((s: any) => `  ${s.table}: ${s.count}`);
+            return { text: `📊 Brain Buckets\n\n${lines.join("\n")}` };
+          } catch (err: any) {
+            return { text: `❌ Stats failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain dnd [on|off|status]
+        if (args.startsWith("dnd")) {
+          const sub = args.slice(3).trim() || "status";
+          if (!["status", "on", "off"].includes(sub)) {
+            return { text: "Usage: /brain dnd [on|off|status]" };
+          }
+          try {
+            const result = await handleDndAction(sub);
+            return { text: result.text };
+          } catch (err: any) {
+            return { text: `❌ DND failed: ${err.message ?? err}` };
+          }
+        }
+
+        // /brain (no args) — dashboard
+        try {
+          const stats = await store.stats();
+          const lines = stats.map((s: any) => `  ${s.table}: ${s.count}`);
+          const dndStatus = await checkDnd(dndConfig);
+          const dndLine = dndStatus.quiet ? "🔇 DND: ON" : "🔔 DND: OFF";
+          return {
+            text: `🧠 Brain Dashboard\n\n${lines.join("\n")}\n\n${dndLine}\n\nCommands: drop, search, stats, dnd`,
+          };
+        } catch (err: any) {
+          return { text: `❌ ${err.message ?? err}` };
+        }
+      },
+    });
 
     // ==================================================================
     // CLI Commands
