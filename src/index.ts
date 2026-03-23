@@ -743,6 +743,30 @@ const brainPlugin = {
       timezone: cfg.dnd.timezone,
     };
 
+    /** Shared DND handler for both tool and slash command. */
+    async function handleDndAction(action: string): Promise<{ text: string; quiet?: boolean; recovery?: string }> {
+      if (action === "status") {
+        const status = await checkDnd(dndConfig);
+        return {
+          text: status.quiet ? `🔇 DND is ON: ${status.reason}` : `🔔 DND is OFF: ${status.reason}`,
+          quiet: status.quiet,
+        };
+      }
+      const on = action === "on";
+      const result = await toggleDnd(on);
+      let text: string;
+      if (on) {
+        text = "🔇 Do Not Disturb enabled.";
+      } else {
+        const postStatus = await checkDnd(dndConfig);
+        text = postStatus.quiet
+          ? `🔔 Manual DND disabled, but auto-quiet is still active (${postStatus.reason}).`
+          : "🔔 Do Not Disturb disabled.";
+        if (result.recovery) text += `\n${result.recovery}`;
+      }
+      return { text, recovery: result.recovery };
+    }
+
     api.registerTool(
       {
         name: "brain_digest",
@@ -806,35 +830,10 @@ const brainPlugin = {
         }),
         async execute(_toolCallId: string, params: any) {
           try {
-            if (params.action === "status") {
-              const status = await checkDnd(dndConfig);
-              return {
-                content: [{
-                  type: "text",
-                  text: status.quiet
-                    ? `🔇 DND is ON: ${status.reason}`
-                    : `🔔 DND is OFF: ${status.reason}`,
-                }],
-                details: { quiet: status.quiet, reason: status.reason },
-              };
-            }
-
-            const on = params.action === "on";
-            const result = await toggleDnd(on);
-            let text: string;
-            if (on) {
-              text = "🔇 Do Not Disturb enabled.";
-            } else {
-              // Check if auto-quiet is still active after manual off
-              const postStatus = await checkDnd(dndConfig);
-              text = postStatus.quiet
-                ? `🔔 Manual DND disabled, but auto-quiet is still active (${postStatus.reason}).`
-                : "🔔 Do Not Disturb disabled.";
-              if (result.recovery) text += `\n${result.recovery}`;
-            }
+            const result = await handleDndAction(params.action);
             return {
-              content: [{ type: "text", text }],
-              details: { manualDnd: result.state.manualDnd, recovery: result.recovery },
+              content: [{ type: "text", text: result.text }],
+              details: { quiet: result.quiet, recovery: result.recovery },
             };
           } catch (err: any) {
             return {
@@ -922,27 +921,12 @@ const brainPlugin = {
         // /brain dnd [on|off|status]
         if (args.startsWith("dnd")) {
           const sub = args.slice(3).trim() || "status";
-          try {
-            if (sub === "status") {
-              const status = await checkDnd(dndConfig);
-              return { text: status.quiet ? `🔇 DND is ON: ${status.reason}` : `🔔 DND is OFF: ${status.reason}` };
-            }
-            if (sub === "on" || sub === "off") {
-              const on = sub === "on";
-              const result = await toggleDnd(on);
-              let msg: string;
-              if (on) {
-                msg = "🔇 Do Not Disturb enabled.";
-              } else {
-                const postStatus = await checkDnd(dndConfig);
-                msg = postStatus.quiet
-                  ? `🔔 Manual DND disabled, but auto-quiet is still active (${postStatus.reason}).`
-                  : "🔔 Do Not Disturb disabled.";
-                if (result.recovery) msg += `\n${result.recovery}`;
-              }
-              return { text: msg };
-            }
+          if (!["status", "on", "off"].includes(sub)) {
             return { text: "Usage: /brain dnd [on|off|status]" };
+          }
+          try {
+            const result = await handleDndAction(sub);
+            return { text: result.text };
           } catch (err: any) {
             return { text: `❌ DND failed: ${err.message ?? err}` };
           }

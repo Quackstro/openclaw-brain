@@ -77,10 +77,15 @@ function getDndStatePath(): string {
  * Load DND state from disk.
  */
 export async function loadDndState(): Promise<DndState> {
+  const filePath = getDndStatePath();
   try {
-    const raw = await fs.readFile(getDndStatePath(), "utf-8");
+    const raw = await fs.readFile(filePath, "utf-8");
     return JSON.parse(raw) as DndState;
-  } catch {
+  } catch (err: any) {
+    // Log if file exists but is malformed (not just missing)
+    if (err?.code !== "ENOENT") {
+      console.error(`brain: failed to parse DND state at ${filePath}: ${err.message ?? err}`);
+    }
     return { manualDnd: false, skippedDigests: [] };
   }
 }
@@ -221,11 +226,25 @@ export async function toggleDnd(
  * Record that a digest was skipped due to DND.
  * Used so we can generate a recovery summary when DND ends.
  */
+let _recordLock: Promise<void> | null = null;
+
+/**
+ * Record that a digest was skipped due to DND.
+ * Serialized via a simple lock to avoid concurrent load-modify-save races.
+ */
 export async function recordSkippedDigest(type: string): Promise<void> {
-  const state = await loadDndState();
-  state.skippedDigests.push({
-    type,
-    timestamp: new Date().toISOString(),
-  });
-  await saveDndState(state);
+  while (_recordLock) await _recordLock;
+  _recordLock = (async () => {
+    const state = await loadDndState();
+    state.skippedDigests.push({
+      type,
+      timestamp: new Date().toISOString(),
+    });
+    await saveDndState(state);
+  })();
+  try {
+    await _recordLock;
+  } finally {
+    _recordLock = null;
+  }
 }

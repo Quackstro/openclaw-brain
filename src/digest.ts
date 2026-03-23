@@ -98,19 +98,18 @@ export const DIGEST_DEFAULTS: Record<DigestType, { maxWords: number }> = {
 // Helpers
 // ============================================================================
 
-/** Module-level timezone, set during gatherDigestData. Defaults to ET. */
-let _digestTimezone = "America/New_York";
+const DEFAULT_TZ = "America/New_York";
 
-/** Get today's date string in YYYY-MM-DD format in the configured timezone. */
-function getToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: _digestTimezone });
+/** Get today's date string in YYYY-MM-DD format in the given timezone. */
+function getToday(tz: string = DEFAULT_TZ): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: tz });
 }
 
-/** Get a date N days ago in YYYY-MM-DD format in the configured timezone. */
-function daysAgo(days: number): string {
+/** Get a date N days ago in YYYY-MM-DD format in the given timezone. */
+function daysAgo(days: number, tz: string = DEFAULT_TZ): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toLocaleDateString("en-CA", { timeZone: _digestTimezone });
+  return d.toLocaleDateString("en-CA", { timeZone: tz });
 }
 
 /** Parse a JSON string safely, returning a default on failure. */
@@ -188,12 +187,12 @@ export async function gatherDigestData(
   buckets?: readonly string[],
   timezone?: string,
 ): Promise<DigestData> {
-  if (timezone) _digestTimezone = timezone;
+  const tz = timezone ?? DEFAULT_TZ;
   const maxWords = DIGEST_DEFAULTS[type].maxWords;
-  const today = getToday();
-  const threeDaysAgo = daysAgo(3);
-  const oneDayAgo = daysAgo(1);
-  const sevenDaysAgo = daysAgo(7);
+  const today = getToday(tz);
+  const threeDaysAgo = daysAgo(3, tz);
+  const oneDayAgo = daysAgo(1, tz);
+  const sevenDaysAgo = daysAgo(7, tz);
   const activityLookback = type === "weekly" ? sevenDaysAgo : oneDayAgo;
 
   const bucketSummaries: BucketSummary[] = [];
