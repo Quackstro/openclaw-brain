@@ -1,8 +1,8 @@
 # Design: Auto-Capture v2 — Conversation Distillation Pipeline
 
-**Author:** DevBot  
-**Date:** 2026-03-27  
-**Status:** Draft  
+**Author:** DevBot
+**Date:** 2026-03-27
+**Status:** Draft
 **PR Target:** `Quackstro/openclaw-brain`
 
 ---
@@ -25,7 +25,7 @@ The current auto-capture (`autoCapture: true`) embeds every individual message t
 
 ## 3. Architecture Overview
 
-```
+```text
 ┌────────────────────────────────────────────────────────┐
 │                   message_received hook                  │
 │                                                          │
@@ -77,6 +77,7 @@ interface TurnBuffer {
 ```
 
 **Flush triggers** (whichever fires first):
+
 | Trigger | Default | Config key |
 |---------|---------|------------|
 | Turn count | 10 user turns accumulated | `autoCapture.flushAfterTurns` |
@@ -97,7 +98,7 @@ A single cheap LLM call per flush that distills the buffered conversation into s
 
 **Prompt:**
 
-```
+```text
 You are an information extraction engine. Given a conversation between a user and an assistant, extract ONLY durable, referenceable information. Skip pleasantries, acknowledgments, debugging back-and-forth, and assistant explanations.
 
 Extract into these categories:
@@ -148,7 +149,7 @@ interface ConversationRecord {
   // Standard brain fields
   id: string;
   vector: number[];                // embedding of distilled text
-  
+
   // Structured fields (SQL-queryable)
   type: "fact" | "decision" | "preference" | "todo";
   text: string;                    // the distilled statement
@@ -158,7 +159,7 @@ interface ConversationRecord {
   entities: string;                // JSON string[] of extracted entities
   temporal: string;                // referenced date or ""
   captured_at: string;             // ISO timestamp of extraction
-  
+
   // Standard bucket fields
   tags: string;                    // JSON string[]
   entries: string;                 // JSON EntryNote[]
@@ -291,7 +292,7 @@ Full config shape (all optional, defaults shown):
 
 ## 7. Data Flow — Happy Path
 
-```
+```text
 1. User sends message "let's use PostgreSQL instead of MySQL for the auth service"
 2. message_received hook fires
 3. isMessageNoteworthy() → true (passes heuristic)
@@ -314,7 +315,7 @@ Full config shape (all optional, defaults shown):
 
 ## 8. Data Flow — Low-Value Conversation
 
-```
+```text
 1. User: "hey"
 2. Assistant: "Hi! How can I help?"
 3. User: "what's the weather"
@@ -344,6 +345,7 @@ Full config shape (all optional, defaults shown):
 | **Total per exchange** | **~$0** |
 
 **Vs. current approach (10 messages × individual embed):**
+
 | Component | Cost |
 |-----------|------|
 | 10 × classifier LLM calls | ~$0.001 |
@@ -384,7 +386,7 @@ The v2 approach is cheaper AND produces better retrieval quality.
 ## 13. Open Questions
 
 1. **Should assistant turns be buffered?** Current design says yes — the assistant's response often contains the "answer" that gives context to the user's decision. But it increases extraction input tokens.
-   
+
 2. **Multi-agent sessions**: When DevBot and Jarvis both run, should they share a buffer or have separate ones? Recommendation: separate per session/agent, with `source_session` tracking origin.
 
 3. **Cross-bucket promotion**: Should high-confidence extracted items (e.g., a clear `todo`) also be promoted to the appropriate main bucket (e.g., `projects`)? Or keep conversations isolated? Recommendation: start isolated, add promotion as a future enhancement.
@@ -396,19 +398,19 @@ The v2 approach is cheaper AND produces better retrieval quality.
 ## Appendix A: Extraction Prompt Variants by Level
 
 ### Level: `facts`
-```
+```text
 Extract ONLY concrete facts and explicit decisions from this conversation.
 Skip opinions, preferences, action items, and casual discussion.
 ```
 
 ### Level: `standard`
-```
+```text
 Extract facts, decisions, preferences, and action items from this conversation.
 Skip pleasantries, debugging back-and-forth, and assistant explanations.
 ```
 
 ### Level: `full`
-```
+```text
 Extract all durable information from this conversation: facts, decisions,
 preferences, action items, and a context summary of the overall topic.
 Skip only trivial acknowledgments.

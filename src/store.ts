@@ -289,7 +289,12 @@ export class BrainStore {
       clauses.push(`type = '${this.esc(filters.type)}'`);
     }
     if (filters?.entities) {
-      clauses.push(`entities LIKE '%${this.esc(filters.entities)}%'`);
+      // Escape SQL LIKE metacharacters (%, _) and backslashes before quoting
+      const escaped = filters.entities
+        .replace(/\\/g, "\\\\")
+        .replace(/%/g, "\\%")
+        .replace(/_/g, "\\_");
+      clauses.push(`entities LIKE '%${this.esc(escaped)}%' ESCAPE '\\'`);
     }
     if (filters?.temporal?.from) {
       clauses.push(`temporal >= '${this.esc(filters.temporal.from)}'`);

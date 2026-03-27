@@ -158,6 +158,7 @@ export class TurnBuffer {
     lastActivity: number;
     flushTimer: ReturnType<typeof setTimeout> | null;
     userTurnCount: number;
+    isFlushing: boolean;
   }> = new Map();
 
   constructor(
@@ -173,7 +174,7 @@ export class TurnBuffer {
   addTurn(sessionId: string, role: "user" | "assistant", content: string): void {
     let buf = this.buffers.get(sessionId);
     if (!buf) {
-      buf = { turns: [], lastActivity: Date.now(), flushTimer: null, userTurnCount: 0 };
+      buf = { turns: [], lastActivity: Date.now(), flushTimer: null, userTurnCount: 0, isFlushing: false };
       this.buffers.set(sessionId, buf);
     }
 
@@ -201,8 +202,8 @@ export class TurnBuffer {
       this.triggerFlush(sessionId, "idle");
     }, this.config.idleFlushMs);
 
-    // Check turn count threshold
-    if (buf.userTurnCount >= this.config.flushAfterTurns) {
+    // Check turn count threshold (skip if flush already in progress)
+    if (buf.userTurnCount >= this.config.flushAfterTurns && !buf.isFlushing) {
       this.triggerFlush(sessionId, "turn_count");
     }
   }
@@ -252,6 +253,10 @@ export class TurnBuffer {
     const buf = this.buffers.get(sessionId);
     if (!buf || buf.turns.length === 0) return;
 
+    // Prevent concurrent flushes for the same session
+    if (buf.isFlushing) return;
+    buf.isFlushing = true;
+
     // Clear timer
     if (buf.flushTimer) {
       clearTimeout(buf.flushTimer);
@@ -269,6 +274,8 @@ export class TurnBuffer {
       await this.onFlush(sessionId, turns);
     } catch (err: any) {
       this.logger?.warn?.(`brain: auto-capture flush failed for ${sessionId}: ${err.message ?? err}`);
+    } finally {
+      buf.isFlushing = false;
     }
 
     // Clean up empty buffers
@@ -328,32 +335,48 @@ export async function extractFromTurns(
   return normalizeExtractionResult(parsed, config);
 }
 
+/** Default timeout for extraction LLM fetch calls (30 seconds). */
+const EXTRACTION_FETCH_TIMEOUT_MS = 30_000;
+
 async function callGatewayExtraction(
   prompt: string,
   model: string,
   config: AutoCaptureConfig,
 ): Promise<string> {
   const url = `${config.gatewayUrl}/v1/chat/completions`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.extractionApiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTRACTION_FETCH_TIMEOUT_MS);
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gateway extraction failed: ${response.status} ${body.slice(0, 300)}`);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.extractionApiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Gateway extraction failed: ${response.status} ${body.slice(0, 300)}`);
+    }
+
+    const data = (await response.json()) as any;
+    return data.choices?.[0]?.message?.content ?? "";
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error(`Gateway extraction timed out after ${EXTRACTION_FETCH_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = (await response.json()) as any;
-  return data.choices?.[0]?.message?.content ?? "";
 }
 
 async function callGeminiExtraction(
@@ -362,25 +385,38 @@ async function callGeminiExtraction(
   config: AutoCaptureConfig,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.extractionApiKey}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        response_mime_type: "application/json",
-        maxOutputTokens: 1024,
-      },
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EXTRACTION_FETCH_TIMEOUT_MS);
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gemini extraction failed: ${response.status} ${body.slice(0, 300)}`);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          response_mime_type: "application/json",
+          maxOutputTokens: 1024,
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Gemini extraction failed: ${response.status} ${body.slice(0, 300)}`);
+    }
+
+    const data = (await response.json()) as any;
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  } catch (err: any) {
+    if (err.name === "AbortError") {
+      throw new Error(`Gemini extraction timed out after ${EXTRACTION_FETCH_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = (await response.json()) as any;
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
 /**
