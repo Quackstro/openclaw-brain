@@ -152,6 +152,13 @@ If the conversation contains NO extractable durable information, return:
 // Turn Buffer
 // ============================================================================
 
+/**
+ * Per-session conversation turn buffer.
+ *
+ * Accumulates user and assistant turns in a ring buffer, then flushes
+ * them to an extraction callback when a trigger fires (turn count,
+ * idle timeout, or manual/shutdown flush).
+ */
 export class TurnBuffer {
   private buffers: Map<string, {
     turns: BufferedTurn[];
@@ -292,6 +299,13 @@ export class TurnBuffer {
 /**
  * Build the extraction prompt from buffered turns.
  */
+/**
+ * Build the full extraction prompt from buffered turns and aggressiveness level.
+ *
+ * @param turns - The buffered conversation turns to distill.
+ * @param level - Aggressiveness tier controlling which item types are extracted.
+ * @returns The complete prompt string, or empty string if level is "off".
+ */
 export function buildExtractionPrompt(turns: BufferedTurn[], level: AutoCaptureLevel): string {
   const systemPrompt = EXTRACTION_PROMPTS[level];
   if (!systemPrompt) return "";
@@ -305,6 +319,16 @@ export function buildExtractionPrompt(turns: BufferedTurn[], level: AutoCaptureL
 
 /**
  * Call the extraction LLM to distill turns into structured items.
+ */
+/**
+ * Call the extraction LLM to distill buffered turns into structured items.
+ *
+ * Selects the appropriate backend (Gemini or gateway) based on the model name,
+ * sends the extraction prompt, and normalizes the JSON response.
+ *
+ * @param turns - Buffered conversation turns.
+ * @param config - Auto-capture configuration (model, API key, thresholds).
+ * @returns Extracted items and a context summary.
  */
 export async function extractFromTurns(
   turns: BufferedTurn[],
@@ -338,6 +362,7 @@ export async function extractFromTurns(
 /** Default timeout for extraction LLM fetch calls (30 seconds). */
 const EXTRACTION_FETCH_TIMEOUT_MS = 30_000;
 
+/** Call the OpenClaw gateway (OpenAI-compatible endpoint) for extraction. */
 async function callGatewayExtraction(
   prompt: string,
   model: string,
@@ -379,6 +404,7 @@ async function callGatewayExtraction(
   }
 }
 
+/** Call Google Gemini API directly for extraction. */
 async function callGeminiExtraction(
   prompt: string,
   model: string,
@@ -422,6 +448,7 @@ async function callGeminiExtraction(
 /**
  * Normalize and validate the raw extraction result.
  */
+/** Normalize and validate the raw extraction LLM response. */
 function normalizeExtractionResult(
   raw: any,
   config: AutoCaptureConfig,
@@ -465,6 +492,7 @@ function normalizeExtractionResult(
   };
 }
 
+/** Return the set of valid item types for a given aggressiveness level. */
 function getValidTypesForLevel(level: AutoCaptureLevel): Set<string> {
   switch (level) {
     case "facts":
@@ -484,6 +512,14 @@ function getValidTypesForLevel(level: AutoCaptureLevel): Set<string> {
 /**
  * Store extracted items in the conversations bucket.
  * Each item gets its own embedding and record.
+ */
+/**
+ * Embed and persist extracted items in the conversations bucket.
+ *
+ * Each item gets its own vector embedding and LanceDB record.
+ * An audit trail entry is logged for every stored item.
+ *
+ * @returns Array of created record IDs.
  */
 export async function storeExtractedItems(
   store: BrainStore,
@@ -545,6 +581,13 @@ export async function storeExtractedItems(
 
 /**
  * Create the auto-capture pipeline: returns the TurnBuffer and flush handler.
+ */
+/**
+ * Create the auto-capture pipeline: returns a TurnBuffer wired to
+ * extract, embed, and store on each flush.
+ *
+ * The returned buffer should be fed turns via addTurn() from message
+ * hooks, and destroyed on shutdown via destroy().
  */
 export function createAutoCapturePipeline(
   store: BrainStore,
