@@ -45,6 +45,7 @@ export const DEFAULT_BUCKETS = [
   "goals",
   "health",
   "finance",
+  "conversations",
 ] as const;
 
 export const SYSTEM_TABLES = ["inbox", "needs_review", "audit_trail"] as const;
@@ -455,6 +456,24 @@ function getBucketSchemaSeed(bucket: string, zeroVec: number[]): Record<string, 
         entries: "[]",
         tags: "[]",
         actions: "[]",
+        vector: zeroVec,
+      };
+
+    case "conversations":
+      return {
+        id: "__schema__",
+        type: "fact",
+        text: "",
+        confidence: 0,
+        source_session: "",
+        context_summary: "",
+        entities: "[]",
+        temporal: "",
+        captured_at: "",
+        tags: "[]",
+        entries: "[]",
+        nextActions: "[]",
+        status: "active",
         vector: zeroVec,
       };
 

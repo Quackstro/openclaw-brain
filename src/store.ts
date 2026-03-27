@@ -261,6 +261,51 @@ export class BrainStore {
   }
 
   // --------------------------------------------------------------------------
+  // Hybrid search (vector + structured filters)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Hybrid search: vector similarity combined with structured WHERE filters.
+   * Useful for the `conversations` bucket which has typed columns.
+   */
+  async hybridSearch(
+    tableName: string,
+    vector: number[],
+    limit: number = 5,
+    filters?: {
+      type?: string;
+      entities?: string;
+      temporal?: { from?: string; to?: string };
+      status?: string;
+    },
+  ): Promise<SearchResult[]> {
+    if (tableName === "audit_trail") {
+      throw new Error("audit_trail does not support vector search");
+    }
+
+    // Build WHERE clauses from structured filters
+    const clauses: string[] = [];
+    if (filters?.type) {
+      clauses.push(`type = '${this.esc(filters.type)}'`);
+    }
+    if (filters?.entities) {
+      clauses.push(`entities LIKE '%${this.esc(filters.entities)}%'`);
+    }
+    if (filters?.temporal?.from) {
+      clauses.push(`temporal >= '${this.esc(filters.temporal.from)}'`);
+    }
+    if (filters?.temporal?.to) {
+      clauses.push(`temporal <= '${this.esc(filters.temporal.to)}'`);
+    }
+    if (filters?.status) {
+      clauses.push(`status = '${this.esc(filters.status)}'`);
+    }
+
+    const filter = clauses.length > 0 ? clauses.join(" AND ") : undefined;
+    return this.search(tableName, vector, limit, filter);
+  }
+
+  // --------------------------------------------------------------------------
   // Stats
   // --------------------------------------------------------------------------
 

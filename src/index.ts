@@ -18,6 +18,13 @@ import { createEmbeddingProvider, getVectorDimension } from "./embeddings.js";
 import { DEFAULT_BUCKETS, SYSTEM_TABLES, type EmbeddingProvider } from "./schemas.js";
 import { BrainStore } from "./store.js";
 import { isMessageNoteworthy } from "./noteworthy.js";
+import {
+  createAutoCapturePipeline,
+  TurnBuffer,
+  type AutoCaptureConfig,
+  type AutoCaptureLevel,
+  DEFAULT_AUTO_CAPTURE_CONFIG,
+} from "./auto-capture.js";
 import { gatherDigestData, formatDigest, generateNudges, type DigestType } from "./digest.js";
 import {
   checkDnd, toggleDnd, recordSkippedDigest, setDndStatePath,
@@ -54,6 +61,19 @@ export {
 export { parseJsonFromLlm } from "./parse-llm-json.js";
 export { buildEmptyBucketRecord } from "./record-builder.js";
 export { isMessageNoteworthy } from "./noteworthy.js";
+export {
+  TurnBuffer,
+  createAutoCapturePipeline,
+  extractFromTurns,
+  storeExtractedItems,
+  buildExtractionPrompt,
+  DEFAULT_AUTO_CAPTURE_CONFIG,
+  type AutoCaptureConfig,
+  type AutoCaptureLevel,
+  type BufferedTurn,
+  type ExtractedItem,
+  type ExtractionResult,
+} from "./auto-capture.js";
 export { parseInputTags, tagToIntent, type InputTag, type TagParseResult } from "./tag-parser.js";
 export { logAudit, getAuditTrail, type AuditAction, type LogAuditParams } from "./audit.js";
 export {
@@ -141,8 +161,11 @@ interface BrainConfig {
     model?: string;
   };
   confidenceThreshold: number;
-  autoCapture: boolean;
+  autoCapture: AutoCaptureConfig;
   autoRecall: boolean;
+  search: {
+    excludeBuckets: string[];
+  };
   autoRecallLimit: number;
   autoRecallMinScore: number;
   dnd: {
@@ -169,6 +192,32 @@ interface BrainConfig {
       autoExecuteThreshold: number;
       maxAutoExecuteAmount: number;
     };
+  };
+}
+
+function parseAutoCaptureConfig(cfg: Record<string, unknown>): AutoCaptureConfig {
+  const raw = cfg.autoCapture;
+
+  // Backward compat: `autoCapture: true` → enabled with defaults
+  if (raw === true) {
+    return { ...DEFAULT_AUTO_CAPTURE_CONFIG, enabled: true };
+  }
+  if (!raw || raw === false) {
+    return { ...DEFAULT_AUTO_CAPTURE_CONFIG, enabled: false };
+  }
+
+  const ac = raw as Record<string, unknown>;
+  return {
+    enabled: (ac.enabled as boolean) ?? false,
+    level: (ac.level as AutoCaptureLevel) ?? "standard",
+    extractionModel: (ac.extractionModel as string) ?? "gemini-2.0-flash",
+    flushAfterTurns: (ac.flushAfterTurns as number) ?? 10,
+    idleFlushMs: (ac.idleFlushMs as number) ?? 5 * 60 * 1000,
+    maxBufferTurns: (ac.maxBufferTurns as number) ?? 20,
+    bucket: (ac.bucket as string) ?? "conversations",
+    minConfidence: (ac.minConfidence as number) ?? 0.6,
+    extractionApiKey: (ac.extractionApiKey as string) ?? "",
+    gatewayUrl: (ac.gatewayUrl as string) ?? "http://127.0.0.1:18789",
   };
 }
 
@@ -210,8 +259,13 @@ function parseConfig(raw: unknown): BrainConfig | null {
       model: classRaw.model as string | undefined,
     },
     confidenceThreshold: (cfg.confidenceThreshold as number) ?? 0.8,
-    autoCapture: (cfg.autoCapture as boolean) ?? false,
+    autoCapture: parseAutoCaptureConfig(cfg),
     autoRecall: (cfg.autoRecall as boolean) ?? false,
+    search: {
+      excludeBuckets: Array.isArray((cfg.search as any)?.excludeBuckets)
+        ? (cfg.search as any).excludeBuckets
+        : [],
+    },
     autoRecallLimit: (cfg.autoRecallLimit as number) ?? 3,
     autoRecallMinScore: (cfg.autoRecallMinScore as number) ?? 0.3,
     dnd: {
@@ -414,7 +468,9 @@ const brainPlugin = {
           try {
             const vector = await embedder.embed(params.query);
             const limit = params.limit ?? 5;
-            const bucketsToSearch = params.bucket ? [params.bucket] : [...cfg.buckets];
+            const bucketsToSearch = params.bucket
+              ? [params.bucket]
+              : cfg.buckets.filter((b: string) => !cfg.search.excludeBuckets.includes(b));
 
             const allResults: Array<{
               bucket: string;
@@ -636,33 +692,48 @@ const brainPlugin = {
     );
 
     // ==================================================================
-    // Auto-Capture
+    // Auto-Capture v2 (Conversation Distillation Pipeline)
     // ==================================================================
 
-    if (cfg.autoCapture) {
+    let turnBuffer: TurnBuffer | undefined;
+
+    if (cfg.autoCapture.enabled && cfg.autoCapture.level !== "off") {
+      // Resolve extraction API key: use configured key, fall back to embedding key
+      const acConfig: AutoCaptureConfig = {
+        ...cfg.autoCapture,
+        extractionApiKey: cfg.autoCapture.extractionApiKey || cfg.embedding.apiKey,
+        gatewayUrl: cfg.autoCapture.gatewayUrl || cfg.actions.gatewayUrl,
+      };
+
+      turnBuffer = createAutoCapturePipeline(store, embedder, acConfig, api.logger);
+
+      // Buffer user messages
       api.registerHook(["message_received"], async (event: any) => {
         const content = event?.content?.trim();
-        if (!content || content.length < 20) return;
+        if (!content || content.length < 5) return;
         if (content.startsWith("/")) return;
 
-        try {
-          const isNoteworthy = await isMessageNoteworthy(content);
-          if (!isNoteworthy) return;
-
-          api.logger.debug?.(`brain: auto-capturing message (${content.length} chars)`);
-
-          await handleDrop(store, embedder, content, "chat", undefined, {
-            classifierFn,
-            confidenceThreshold: cfg.confidenceThreshold,
-            async: true,
-            buckets: cfg.buckets,
-          });
-        } catch (err: any) {
-          api.logger.warn?.(`brain: auto-capture failed: ${err.message ?? err}`);
-        }
+        const sessionId = event?.sessionId ?? event?.chatId ?? "default";
+        turnBuffer!.addTurn(sessionId, "user", content);
       });
 
-      api.logger.info("brain: auto-capture enabled (message_received hook)");
+      // Buffer assistant responses
+      api.registerHook(["message_sent"], async (event: any) => {
+        const content = event?.content?.trim();
+        if (!content || content.length < 10) return;
+
+        const sessionId = event?.sessionId ?? event?.chatId ?? "default";
+        turnBuffer!.addTurn(sessionId, "assistant", content);
+      });
+
+      // Expose for extension consumers
+      (api as any)._brainAutoCapture = { turnBuffer, config: acConfig };
+
+      api.logger.info(
+        `brain: auto-capture v2 enabled (level: ${acConfig.level}, ` +
+          `flush: ${acConfig.flushAfterTurns} turns / ${acConfig.idleFlushMs / 1000}s idle, ` +
+          `model: ${acConfig.extractionModel}, bucket: ${acConfig.bucket})`,
+      );
     }
 
     // ==================================================================
@@ -1052,7 +1123,12 @@ const brainPlugin = {
       start: () => {
         api.logger.info(`brain: initialized (db: ${resolvedDbPath})`);
       },
-      stop: () => {
+      stop: async () => {
+        if (turnBuffer) {
+          api.logger.info("brain: flushing auto-capture buffers on shutdown...");
+          await turnBuffer.flushAll();
+          turnBuffer.destroy();
+        }
         api.logger.info("brain: stopped");
       },
     });
