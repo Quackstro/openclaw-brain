@@ -1,195 +1,207 @@
 {
-  "id": "brain",
-  "name": "Brain",
-  "description": "Behavioral memory system for OpenClaw — captures thoughts, classifies into configurable buckets, provides semantic search, and detects actionable intents.",
-  "kind": "memory",
-  "uiHints": {
-    "storage.dbPath": {
-      "label": "Database Path",
-      "placeholder": "~/.openclaw/brain/lancedb",
-      "advanced": true,
-      "help": "Path to the LanceDB database directory"
-    },
-    "buckets": {
-      "label": "Buckets",
-      "help": "List of bucket names for organizing thoughts",
-      "advanced": true
-    },
-    "embedding.provider": {
-      "label": "Embedding Provider",
-      "help": "gemini or openai"
-    },
-    "embedding.apiKey": {
-      "label": "Embedding API Key",
-      "sensitive": true,
-      "placeholder": "sk-... or AI...",
-      "help": "API key for embeddings (Gemini keys start with AI, otherwise OpenAI)"
-    },
-    "embedding.model": {
-      "label": "Embedding Model",
-      "placeholder": "text-embedding-3-small",
-      "help": "Model to use for embeddings"
-    },
-    "classifier.apiKey": {
-      "label": "Classifier API Key",
-      "sensitive": true,
-      "help": "API key for LLM classification (uses OpenClaw gateway if not set)"
-    },
-    "classifier.model": {
-      "label": "Classifier Model",
-      "placeholder": "claude-haiku-3.5",
-      "help": "Model to use for classification"
-    },
-    "confidenceThreshold": {
-      "label": "Confidence Threshold",
-      "placeholder": "0.80",
-      "help": "Minimum confidence score for automatic routing (0.0-1.0)"
-    },
-    "autoCapture": {
-      "label": "Auto-Capture",
-      "help": "Passively capture noteworthy info from conversations (default: off)"
-    },
-    "autoRecall": {
-      "label": "Auto-Recall",
-      "help": "Inject relevant memories into system prompt before each agent turn (default: off)"
-    },
-    "autoRecallLimit": {
-      "label": "Auto-Recall Limit",
-      "placeholder": "3",
-      "help": "Max memories to inject per turn",
-      "advanced": true
-    },
-    "autoRecallMinScore": {
-      "label": "Auto-Recall Min Score",
-      "placeholder": "0.3",
-      "help": "Minimum similarity score for auto-recalled memories",
-      "advanced": true
-    },
-    "actions.enabled": {
-      "label": "Enable Actions",
-      "help": "Enable automatic action detection and routing"
-    },
-    "actions.timezone": {
-      "label": "Timezone",
-      "placeholder": "America/New_York",
-      "help": "User timezone for reminder scheduling"
-    },
-    "actions.reminder.enabled": {
-      "label": "Enable Reminders",
-      "help": "Enable reminder detection and cron job creation"
-    },
-    "actions.payment.enabled": {
-      "label": "Enable Payments",
-      "help": "Enable payment intent detection"
-    },
-    "actions.payment.maxAutoExecuteAmount": {
-      "label": "Max Auto-Execute Amount",
-      "placeholder": "10",
-      "help": "Maximum amount for auto-execution (in DOGE)"
-    }
-  },
-  "configSchema": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-      "storage": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "dbPath": {
-            "type": "string",
-            "default": "~/.openclaw/brain/lancedb"
-          }
-        }
-      },
-      "buckets": {
-        "type": "array",
-        "items": { "type": "string" },
-        "default": ["people", "projects", "ideas", "admin", "documents", "goals", "health", "finance"],
-        "description": "List of bucket names for organizing thoughts"
-      },
-      "embedding": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "provider": {
-            "type": "string",
-            "enum": ["gemini", "openai", "auto"],
-            "default": "auto"
-          },
-          "apiKey": { "type": "string" },
-          "model": { "type": "string", "default": "text-embedding-3-small" },
-          "baseURL": { "type": "string", "description": "Custom base URL for OpenAI-compatible APIs" }
+    "id": "brain",
+    "kind": "memory",
+    "name": "Brain 2.0",
+    "version": "2026.2.1",
+    "description": "Behavioral support system — captures, classifies, and routes thoughts into semantic buckets",
+    "uiHints": {
+        "embedding.apiKey": {
+            "label": "Embedding API Key",
+            "sensitive": true,
+            "placeholder": "gho_...",
+            "help": "API key for embeddings (reuse from doc-RAG)"
         },
-        "required": ["apiKey"]
-      },
-      "classifier": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "apiKey": { "type": "string", "description": "API key for classification (uses gateway token if not set)" },
-          "model": { "type": "string", "default": "claude-haiku-3.5" }
+        "embedding.model": {
+            "label": "Embedding Model",
+            "placeholder": "text-embedding-3-small",
+            "help": "OpenAI embedding model to use"
+        },
+        "classification.model": {
+            "label": "Classification Model",
+            "placeholder": "anthropic/claude-sonnet-4",
+            "help": "LLM model for thought classification"
+        },
+        "classification.confidenceThreshold": {
+            "label": "Confidence Threshold",
+            "help": "Minimum confidence to auto-route (0.0-1.0, default 0.80)"
         }
-      },
-      "confidenceThreshold": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.8
-      },
-      "autoCapture": {
-        "type": "boolean",
-        "default": false,
-        "description": "Passively capture noteworthy info from conversations"
-      },
-      "autoRecall": {
-        "type": "boolean",
-        "default": false,
-        "description": "Inject relevant memories into system prompt before each agent turn"
-      },
-      "autoRecallLimit": {
-        "type": "number",
-        "minimum": 1,
-        "maximum": 10,
-        "default": 3
-      },
-      "autoRecallMinScore": {
-        "type": "number",
-        "minimum": 0,
-        "maximum": 1,
-        "default": 0.3
-      },
-      "actions": {
-        "type": "object",
-        "additionalProperties": false,
-        "description": "Action detection and routing (reminders, payments, todos)",
-        "properties": {
-          "enabled": { "type": "boolean", "default": true },
-          "gatewayToken": { "type": "string", "description": "Token for gateway LLM calls" },
-          "gatewayUrl": { "type": "string", "default": "http://127.0.0.1:18789" },
-          "timezone": { "type": "string", "default": "America/New_York" },
-          "extractionModel": { "type": "string", "default": "claude-haiku-3.5" },
-          "reminder": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "enabled": { "type": "boolean", "default": true },
-              "nagIntervalMinutes": { "type": "number", "default": 5 },
-              "defaultTime": { "type": "string", "default": "09:00" }
-            }
-          },
-          "payment": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "enabled": { "type": "boolean", "default": true },
-              "autoExecuteThreshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.95 },
-              "maxAutoExecuteAmount": { "type": "number", "default": 10 }
-            }
-          }
-        }
-      }
     },
-    "required": ["embedding"]
-  }
+    "configSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "embedding": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "apiKey": {
+                        "type": "string"
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": [
+                            "text-embedding-3-small",
+                            "text-embedding-3-large",
+                            "gemini-embedding-001"
+                        ]
+                    },
+                    "baseURL": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "apiKey"
+                ]
+            },
+            "storage": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "dbPath": {
+                        "type": "string"
+                    }
+                }
+            },
+            "classification": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "model": {
+                        "type": "string"
+                    },
+                    "confidenceThreshold": {
+                        "type": "number"
+                    },
+                    "apiKey": {
+                        "type": "string"
+                    }
+                }
+            },
+            "digests": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "schedule": {
+                        "type": "object",
+                        "properties": {
+                            "morning": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "time": {
+                                        "type": "string"
+                                    },
+                                    "maxWords": {
+                                        "type": "number"
+                                    }
+                                }
+                            },
+                            "midday": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "time": {
+                                        "type": "string"
+                                    },
+                                    "maxWords": {
+                                        "type": "number"
+                                    }
+                                }
+                            },
+                            "afternoon": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "time": {
+                                        "type": "string"
+                                    },
+                                    "maxWords": {
+                                        "type": "number"
+                                    }
+                                }
+                            },
+                            "night": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "time": {
+                                        "type": "string"
+                                    },
+                                    "maxWords": {
+                                        "type": "number"
+                                    }
+                                }
+                            },
+                            "weekly": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "day": {
+                                        "type": "string"
+                                    },
+                                    "time": {
+                                        "type": "string"
+                                    },
+                                    "maxWords": {
+                                        "type": "number"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "dnd": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "autoQuiet": {
+                        "type": "object",
+                        "properties": {
+                            "enabled": {
+                                "type": "boolean"
+                            },
+                            "from": {
+                                "type": "string"
+                            },
+                            "to": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "manual": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "usageAware": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "backoffThreshold": {
+                        "type": "number"
+                    }
+                }
+            }
+        }
+    }
 }
