@@ -450,6 +450,8 @@ All options live under the `brain` key in your OpenClaw plugin config.
 | `autoCapture.maxBufferTurns` | number | `20` | Max turns in the ring buffer before eviction |
 | `autoCapture.bucket` | string | `"conversations"` | Target bucket for extracted items |
 | `autoCapture.minConfidence` | number | `0.6` | Skip extracted items below this confidence |
+| `autoCapture.extractionApiKey` | string | — | API key for extraction LLM (Gemini key or gateway token). Falls back to `embedding.apiKey` if omitted |
+| `autoCapture.gatewayUrl` | string | `"http://127.0.0.1:18789"` | Gateway URL for gateway-based extraction models |
 
 #### Search
 
@@ -464,7 +466,7 @@ All options live under the `brain` key in your OpenClaw plugin config.
 | `dnd.autoQuiet.enabled` | boolean | `true` | Automatically silence digests during quiet hours |
 | `dnd.autoQuiet.from` | string | `"22:00"` | Start of quiet hours (24h format) |
 | `dnd.autoQuiet.to` | string | `"07:00"` | End of quiet hours (24h format) |
-| `dnd.manual` | boolean | `false` | Manual DND override |
+| `dnd.timezone` | string | `"America/New_York"` | IANA timezone for quiet hour calculations |
 
 #### Usage Awareness
 
