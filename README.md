@@ -78,7 +78,7 @@ Add your embedding API key to the Brain config in your OpenClaw configuration (`
       "embedding": {
         "apiKey": "your-api-key-here"
       },
-      "classification": {
+      "classifier": {
         "apiKey": "your-gateway-token"
       }
     }
@@ -405,9 +405,9 @@ All options live under the `brain` key in your OpenClaw plugin config.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `classification.apiKey` | string | - | API key / gateway token for the classification LLM. If omitted, classification is disabled and drops stay in the inbox. |
-| `classification.model` | string | `claude-sonnet-4-20250514` | LLM model used for classifying thoughts |
-| `classification.confidenceThreshold` | number | `0.80` | Minimum confidence (0.0-1.0) required to auto-route a drop to a bucket. Below this, the item goes to **needs review**. |
+| `classifier.apiKey` | string | - | API key / gateway token for the classification LLM. If omitted, classification is disabled and drops stay in the inbox. |
+| `classifier.model` | string | `claude-sonnet-4-20250514` | LLM model used for classifying thoughts |
+| `classifier.confidenceThreshold` | number | `0.80` | Minimum confidence (0.0-1.0) required to auto-route a drop to a bucket. Below this, the item goes to **needs review**. |
 
 #### Storage
 
@@ -670,17 +670,17 @@ User Input
 You need to add an `embedding.apiKey` to your Brain config. This is the only required field.
 
 ### Drops stay in inbox (never classified)
-Make sure `classification.apiKey` is set. Without it, classification is disabled and drops remain in the inbox as "pending."
+Make sure `classifier.apiKey` is set. Without it, classification is disabled and drops remain in the inbox as "pending."
 
 ### Items going to needs_review too often
-Lower the `classification.confidenceThreshold` (e.g., from `0.80` to `0.70`). The default is conservative; a 70% threshold lets more items auto-route.
+Lower the `classifier.confidenceThreshold` (e.g., from `0.80` to `0.70`). The default is conservative; a 70% threshold lets more items auto-route.
 
 ### Duplicate items not being merged
 Deduplication uses a cosine similarity threshold of **0.92**. If two items are similar but not *very* similar, they'll be stored separately. You can manually merge with `brain_fix(id: "abc", correction: "merge def")`.
 
 ### Reminders not firing
 Check that:
-1. The action router config has a valid `gatewayToken` (same as `classification.apiKey`)
+1. The action router config has a valid `gatewayToken` (same as `classifier.apiKey`)
 2. The cron jobs exist: `openclaw cron list`
 3. The reminder script exists at `/home/clawdbot/clawd/scripts/brain-reminder.mjs`
 
