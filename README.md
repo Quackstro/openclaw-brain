@@ -40,18 +40,18 @@ For richer interactions, agent tools (`brain_drop`, `brain_search`, etc.) work t
 
 Brain 2.0 is a **separate plugin** and does not come bundled with OpenClaw.
 
-**Option A: From npm**
+**Option A: From GitHub (recommended)**
+
+```bash
+git clone https://github.com/quackstro/openclaw-brain.git ~/.openclaw/extensions/brain
+cd ~/.openclaw/extensions/brain
+npm install
+```
+
+**Option B: From npm** *(coming soon)*
 
 ```bash
 openclaw plugins install @quackstro/openclaw-brain
-```
-
-**Option B: From GitHub**
-
-```bash
-git clone https://github.com/Quackstro/openclaw-brain.git ~/.openclaw/extensions/brain
-cd ~/.openclaw/extensions/brain
-npm install && npm run build
 ```
 
 Then restart OpenClaw to load the plugin:
@@ -74,28 +74,17 @@ Add your embedding API key to the Brain config in your OpenClaw configuration (`
 ```json
 {
   "plugins": {
-    "entries": {
-      "brain": {
-        "config": {
-          "embedding": {
-            "apiKey": "your-gemini-or-openai-key",
-            "model": "gemini-embedding-001"
-          },
-          "classifier": {
-            "apiKey": "your-gateway-token",
-            "model": "claude-haiku-3.5"
-          }
-        }
+    "brain": {
+      "embedding": {
+        "apiKey": "your-api-key-here"
+      },
+      "classification": {
+        "apiKey": "your-gateway-token"
       }
-    },
-    "slots": {
-      "memory": "brain"
     }
   }
 }
 ```
-
-> **Note:** Set `plugins.slots.memory` to `"brain"` so it takes the memory plugin slot instead of the built-in `memory-core`.
 
 ### 3. First Drop
 
@@ -121,30 +110,23 @@ All three do the same thing. Brain captures it, classifies it as **admin** (appo
 
 ### Slash Commands
 
-Brain registers `/drop` and `/brain` slash commands that work directly in Telegram (and other channels) **without invoking the AI agent**.
+Brain registers a `/brain` slash command that works directly in Telegram (and other channels) **without invoking the AI agent**.
 
 > **💡 Why slash commands matter:**
 >
 > - ⚡ **Instant**: No LLM round-trip. Results come back in milliseconds, not seconds.
 > - 💰 **Zero token cost**: Slash commands don't consume any AI tokens.
-> - 🧹 **No context pollution**: Slash commands don't add messages to your chat history.
-> - 🔒 **Deterministic**: Same input, same output. No LLM interpretation.
+> - 🧹 **No context pollution**: The biggest advantage. Slash commands don't add messages to your chat history. When you drop a thought via `/brain drop`, it doesn't eat into your conversation window. Your chat context stays focused on the current task, not cluttered with brain operations.
+> - 🔒 **Deterministic**: Same input, same output. No LLM interpretation or hallucination risk.
 
-#### `/drop <text>`
-
-The fastest way to capture a thought.
-
-```text
-/drop Call dentist about appointment next Tuesday
-```
-→ `✅ Captured [ToDo]` (with ID)
+Use slash commands for quick captures, lookups, and status checks. Use the agent tools (via natural chat) when you need conversational follow-ups or complex queries like "search my brain for that thing my neighbor mentioned about 3D printing."
 
 #### `/brain`
 
-Dashboard with bucket counts and DND status.
+Show the Brain dashboard with bucket counts and DND status.
 
-```text
-🧠 Brain Dashboard
+```
+🧠 Brain 2.0 Dashboard
 
   people: 2
   projects: 37
@@ -156,65 +138,57 @@ Dashboard with bucket counts and DND status.
 Commands: drop, search, stats, dnd
 ```
 
+#### `/drop <text>`
+
+The fastest way to capture a thought. Shortcut for `/brain drop`.
+
+```
+/drop Call dentist about appointment next Tuesday
+```
+→ `✅ Captured [ToDo]` (with ID)
+
 #### `/brain drop <text>`
 
-Same as `/drop`.
+Same as `/drop`, for when you want the full command.
+
+```
+/brain drop Pick up prescription tomorrow
+```
+→ `✅ Captured` (with ID)
 
 #### `/brain search <query>`
 
-Semantic search across all buckets with formatted results.
+Semantic search across all buckets. Returns top 5 matches with scores.
+
+```
+/brain search mobile app project status
+```
+→ 
+```
+🔍 Found 5 results:
+
+1. [projects] Mobile App Redesign (92%)
+2. [projects] Payment Integration (78%)
+3. [admin] Weekly report schedule (71%)
+...
+```
 
 #### `/brain stats`
 
-Show record counts per bucket.
+Show record counts per bucket (same as the dashboard stats section).
 
 #### `/brain dnd [on|off|status]`
 
-Control Do Not Disturb mode.
+Control Do Not Disturb mode directly.
 
-```text
+```
 /brain dnd on      → 🔇 Do Not Disturb enabled.
 /brain dnd off     → 🔔 Do Not Disturb disabled.
 /brain dnd status  → 🔇 DND is ON: Manual override
+/brain dnd         → (same as status)
 ```
 
-### Auto-Classification
-
-Every drop goes through Brain's **automatic classification pipeline**:
-
-1. **Tag Parse** — Bracket tags like `[ToDo]`, `[Reminder]` are detected and stripped
-2. **Embed** — The text is converted to a vector via your configured embedding model
-3. **Inbox** — The raw drop is saved with timestamp, source, and vector
-4. **Classify** — An LLM analyzes the text and returns structured JSON: bucket, confidence, title, summary, next actions, entities, urgency, and detected intent
-5. **Route** — If confidence ≥ threshold (default 0.80), the drop is automatically routed to the target bucket. Below threshold, it goes to **needs_review**
-6. **Dedup** — Before creating a new record, cosine similarity checks for near-duplicates (≥0.92). Matches are auto-merged instead of duplicated
-7. **Action Detect** — The action router scans for time-sensitive intents (reminders, payments, todos) and creates cron jobs or approval flows
-
-All of this happens asynchronously after the initial "✅ Captured" acknowledgment, so the user is never blocked.
-
-### Auto-Capture
-
-When `autoCapture: true`, Brain passively listens to all conversations and automatically captures noteworthy messages — without any explicit `/drop` or tool call.
-
-**How it works:**
-- Hooks into the `message_received` event
-- Filters out short messages (<20 chars), trivial acks ("ok", "thanks", "lol"), greetings, and emoji-only messages
-- Requires at least 4 words of substance
-- Qualifying messages are silently dropped into the Brain and classified
-
-This means information shared in casual conversation (names, dates, project updates, health notes) gets captured without you having to remember to drop it.
-
-### Auto-Recall
-
-When `autoRecall: true`, Brain automatically injects relevant memories into the system prompt before each agent turn.
-
-**How it works:**
-- Hooks into the `before_agent_start` event
-- Embeds the user's prompt and searches all buckets
-- Top matches (up to `autoRecallLimit`, default 3) above `autoRecallMinScore` (default 0.3) are formatted and prepended to the agent's context
-- The agent sees a "Relevant Memories" section with matching records from your Brain
-
-This gives the AI contextual awareness of your stored knowledge without you asking. For example, if you mention "Sarah" in conversation and you have a people record for Sarah, the agent automatically sees her context, company, and last interaction.
+> **💡 Tip:** For routine Brain operations (quick drops, status checks, DND toggles), always prefer slash commands. Reserve agent tools for when you need the AI to reason about your query, e.g., "what was that project idea I had last week about security cameras?"
 
 ### Natural Language
 
@@ -257,7 +231,7 @@ If no bracket tag is provided, Brain uses the classifier's detected intent and k
 
 ## Your Buckets
 
-Brain organizes your thoughts into **8 buckets**:
+Brain organizes your thoughts into **9 buckets**:
 
 | Bucket | What goes here | Example |
 |--------|---------------|---------|
@@ -269,8 +243,9 @@ Brain organizes your thoughts into **8 buckets**:
 | 🎯 **goals** | Long-term objectives, milestones | "Run a half marathon by September" |
 | 🏥 **health** | Medical, fitness, nutrition, wellness | "Blood pressure was 120/80 at last checkup" |
 | 💰 **finance** | Bills, investments, expenses, budgets | "Electric bill due on the 15th, $142" |
+| 💬 **conversations** | Auto-captured facts, decisions, preferences, todos | Distilled from chat sessions by the auto-capture pipeline |
 
-Each bucket has its own schema with fields tailored to its purpose (e.g., people records track `company`, `contactInfo`, and `lastInteraction`; finance records track `amount`, `currency`, and `recurring` schedules).
+Each bucket has its own schema with fields tailored to its purpose (e.g., people records track `company`, `contactInfo`, and `lastInteraction`; finance records track `amount`, `currency`, and `recurring` schedules). The `conversations` bucket has structured columns (`type`, `entities`, `temporal`, `confidence`, `source_session`) enabling hybrid SQL + vector search.
 
 There are also **3 system tables**: `inbox` (pending drops), `needs_review` (low-confidence items), and `audit_trail` (full history).
 
@@ -329,22 +304,13 @@ DND state is persisted to `~/.openclaw/brain/dnd-state.json` and survives restar
 
 ### Searching
 
-Brain offers two search tools:
-
-- **`brain_search`** — Raw semantic search. Returns IDs, bucket names, and similarity scores. Best for programmatic use.
-- **`brain_recall`** — Human-readable search. Returns formatted results with titles, summaries, next actions, and tags. Best for user-facing queries.
+Use `brain_search` to find anything across your Brain by semantic similarity.
 
 ```
-brain_recall("Sarah from Acme")
-→ 🧠 Found 2 results for "Sarah from Acme":
-
-  **Sarah, Acme Corp** [people] (87% match)
-    Met at conference, works on ML infrastructure
-    → Send follow-up email
-    🏷️ networking, ML
-
-  **Acme Partnership** [projects] (62% match)
-    Joint project discussion
+brain_search("Sarah from Acme")
+→ Found 2 results:
+  1. [people] Sarah, Acme Corp ML Infrastructure (87%)
+  2. [projects] Acme Partnership (62%)
 ```
 
 You can also limit to a specific bucket:
@@ -439,18 +405,9 @@ All options live under the `brain` key in your OpenClaw plugin config.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `classifier.apiKey` | string | - | API key / gateway token for the classification LLM. If omitted, classification is disabled and drops stay in the inbox. |
-| `classifier.model` | string | `claude-haiku-3.5` | LLM model used for classifying thoughts |
-| `confidenceThreshold` | number | `0.80` | Minimum confidence (0.0-1.0) required to auto-route a drop to a bucket. Below this, the item goes to **needs review**. |
-
-#### Auto-Capture & Auto-Recall
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `autoCapture` | boolean | `false` | Passively capture noteworthy info from conversations |
-| `autoRecall` | boolean | `false` | Inject relevant memories into system prompt before each agent turn |
-| `autoRecallLimit` | number | `3` | Max memories to inject per turn |
-| `autoRecallMinScore` | number | `0.3` | Minimum similarity score for auto-recalled memories |
+| `classification.apiKey` | string | - | API key / gateway token for the classification LLM. If omitted, classification is disabled and drops stay in the inbox. |
+| `classification.model` | string | `claude-sonnet-4-20250514` | LLM model used for classifying thoughts |
+| `classification.confidenceThreshold` | number | `0.80` | Minimum confidence (0.0-1.0) required to auto-route a drop to a bucket. Below this, the item goes to **needs review**. |
 
 #### Storage
 
@@ -481,19 +438,40 @@ All options live under the `brain` key in your OpenClaw plugin config.
 | `digests.schedule.weekly.time` | string | - | Time to send |
 | `digests.schedule.weekly.maxWords` | number | `250` | Soft word limit |
 
-#### Actions
+#### Auto-Capture
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `actions.enabled` | boolean | `true` | Enable action detection and routing |
-| `actions.timezone` | string | `America/New_York` | User timezone for reminder scheduling |
-| `actions.extractionModel` | string | `claude-haiku-3.5` | Model for LLM time extraction |
-| `actions.reminder.enabled` | boolean | `true` | Enable reminder detection |
-| `actions.reminder.nagIntervalMinutes` | number | `5` | Nag interval for unacknowledged reminders |
-| `actions.reminder.defaultTime` | string | `09:00` | Default time if only date specified |
-| `actions.payment.enabled` | boolean | `true` | Enable payment intent detection |
-| `actions.payment.autoExecuteThreshold` | number | `0.95` | Confidence threshold for auto-execution |
-| `actions.payment.maxAutoExecuteAmount` | number | `10` | Max amount (DOGE) for auto-execution |
+| `autoCapture.enabled` | boolean | `false` | Master switch for conversation auto-capture |
+| `autoCapture.level` | string | `"standard"` | Aggressiveness tier: `off`, `facts`, `standard`, `full` |
+| `autoCapture.extractionModel` | string | `"gemini-2.0-flash"` | LLM model for turn extraction |
+| `autoCapture.flushAfterTurns` | number | `10` | Flush after this many user turns |
+| `autoCapture.idleFlushMs` | number | `300000` | Flush after idle period (ms). Default 5 minutes |
+| `autoCapture.maxBufferTurns` | number | `20` | Max turns in the ring buffer before eviction |
+| `autoCapture.bucket` | string | `"conversations"` | Target bucket for extracted items |
+| `autoCapture.minConfidence` | number | `0.6` | Skip extracted items below this confidence |
+
+#### Search
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `search.excludeBuckets` | string[] | `[]` | Buckets to exclude from default `brain_search`. Add `"conversations"` to silence auto-capture noise |
+
+#### Do Not Disturb
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `dnd.autoQuiet.enabled` | boolean | `true` | Automatically silence digests during quiet hours |
+| `dnd.autoQuiet.from` | string | `"22:00"` | Start of quiet hours (24h format) |
+| `dnd.autoQuiet.to` | string | `"07:00"` | End of quiet hours (24h format) |
+| `dnd.manual` | boolean | `false` | Manual DND override |
+
+#### Usage Awareness
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `usageAware.enabled` | boolean | - | Enable usage-aware backoff for API calls |
+| `usageAware.backoffThreshold` | number | - | Token usage threshold to trigger backoff |
 
 ### Action Routing
 
@@ -539,6 +517,39 @@ After classification, the **router** (the "Bouncer") decides what happens:
 
 - **Confidence ≥ threshold** (default 0.80): The drop is automatically routed to the target bucket. A structured record is created with all the classified fields.
 - **Confidence < threshold** or **unknown bucket**: The drop goes to the **needs_review** queue. You can review it later and manually route it with `brain_fix`.
+
+### Auto-Capture v2 (Conversation Distillation)
+
+Instead of embedding every raw chat message (noisy and wasteful), Brain's auto-capture v2 pipeline **buffers conversation turns** and periodically distills them into high-quality structured items.
+
+**How it works:**
+
+1. **Buffer**: User and assistant turns accumulate in a per-session in-memory ring buffer.
+2. **Flush**: When a trigger fires (idle timeout, turn count, or session end), the buffer is flushed.
+3. **Extract**: A lightweight LLM (Gemini Flash or Haiku) distills the buffered turns into structured items: facts, decisions, preferences, and todos.
+4. **Embed & Store**: Each extracted item gets its own embedding and is stored in the `conversations` bucket with typed metadata.
+5. **Skip noise**: If the LLM finds nothing worth extracting (e.g., casual chit-chat), zero items are stored — zero cost.
+
+**Aggressiveness tiers** (`autoCapture.level`):
+
+| Level | What gets extracted |
+|-------|-------------------|
+| `off` | Nothing (disabled) |
+| `facts` | Only concrete facts and explicit decisions |
+| `standard` | Facts, decisions, preferences, and todos (default) |
+| `full` | Everything above plus a context summary embedding |
+
+**Flush triggers** (whichever fires first):
+
+| Trigger | Default | Config key |
+|---------|---------|------------|
+| User turn count | 10 turns | `autoCapture.flushAfterTurns` |
+| Idle timeout | 5 minutes | `autoCapture.idleFlushMs` |
+| Session end / shutdown | Automatic | — |
+
+**Killswitch**: Add `"conversations"` to `search.excludeBuckets` to exclude auto-captured items from default `brain_search` results without deleting the data. You can still search them explicitly with `brain_search(bucket: "conversations")`.
+
+**Example**: A 10-turn debugging exchange produces 1-2 high-signal items (the root cause, the fix applied) instead of 10 low-value raw message embeddings.
 
 The inbox entry is cleaned up after successful routing.
 
@@ -610,7 +621,7 @@ User Input
 
 ### Key Technologies
 
-- **LanceDB**: Embedded vector database for storage + semantic search (11 tables total)
+- **LanceDB**: Embedded vector database for storage + semantic search (12 tables total)
 - **Embeddings**: OpenAI `text-embedding-3-small` (1536 dim) or Gemini `gemini-embedding-001` (3072 dim)
 - **Classification**: LLM-powered via OpenClaw gateway (Claude) or direct Gemini API
 - **Reminders**: Persistent cron jobs via `openclaw cron` with Telegram inline button delivery
@@ -626,7 +637,6 @@ User Input
 |------|-----------|-------------|
 | `brain_drop` | `text` (required), `source`, `mediaPath` | Capture a thought into the Brain |
 | `brain_search` | `query` (required), `bucket`, `limit` | Search by semantic similarity across all buckets or a specific one |
-| `brain_recall` | `query` (required), `bucket`, `limit` | Human-readable memory recall with formatted output |
 | `brain_stats` | *(none)* | Show record counts and health for all buckets |
 | `brain_audit` | `inputId`, `limit` | View audit trail for a specific item or recent actions |
 | `brain_digest` | `type` (required): morning, midday, afternoon, night, weekly | Generate a digest (respects DND) |
