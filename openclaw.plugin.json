@@ -16,24 +16,44 @@
             "placeholder": "text-embedding-3-small",
             "help": "OpenAI embedding model to use"
         },
-        "classification.model": {
+        "classifier.model": {
             "label": "Classification Model",
             "placeholder": "anthropic/claude-sonnet-4",
             "help": "LLM model for thought classification"
         },
-        "classification.confidenceThreshold": {
+        "confidenceThreshold": {
             "label": "Confidence Threshold",
             "help": "Minimum confidence to auto-route (0.0-1.0, default 0.80)"
+        },
+        "autoCapture.extractionApiKey": {
+            "label": "Auto-Capture Extraction API Key",
+            "sensitive": true,
+            "placeholder": "sk-...",
+            "help": "API key for the extraction LLM used by auto-capture"
+        },
+        "classifier.apiKey": {
+            "label": "Classifier API Key",
+            "sensitive": true,
+            "placeholder": "sk-...",
+            "help": "API key for the classification LLM"
+        },
+        "actions.gatewayToken": {
+            "label": "Actions Gateway Token",
+            "sensitive": true,
+            "placeholder": "token-...",
+            "help": "Authentication token for the actions gateway"
         }
     },
     "configSchema": {
         "type": "object",
-        "additionalProperties": false,
         "properties": {
             "embedding": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
+                    "provider": {
+                        "type": "string",
+                        "enum": ["gemini", "openai", "auto"]
+                    },
                     "apiKey": {
                         "type": "string"
                     },
@@ -55,22 +75,17 @@
             },
             "storage": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                     "dbPath": {
                         "type": "string"
                     }
                 }
             },
-            "classification": {
+            "classifier": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                     "model": {
                         "type": "string"
-                    },
-                    "confidenceThreshold": {
-                        "type": "number"
                     },
                     "apiKey": {
                         "type": "string"
@@ -199,6 +214,124 @@
                     },
                     "backoffThreshold": {
                         "type": "number"
+                    }
+                }
+            },
+            "confidenceThreshold": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+            },
+            "autoCapture": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "level": {
+                        "type": "string",
+                        "enum": ["off", "facts", "standard", "full"]
+                    },
+                    "extractionModel": {
+                        "type": "string"
+                    },
+                    "flushAfterTurns": {
+                        "type": "number"
+                    },
+                    "idleFlushMs": {
+                        "type": "number"
+                    },
+                    "maxBufferTurns": {
+                        "type": "number"
+                    },
+                    "bucket": {
+                        "type": "string"
+                    },
+                    "minConfidence": {
+                        "type": "number"
+                    },
+                    "extractionApiKey": {
+                        "type": "string"
+                    },
+                    "gatewayUrl": {
+                        "type": "string"
+                    }
+                }
+            },
+            "autoRecall": {
+                "type": "boolean"
+            },
+            "autoRecallLimit": {
+                "type": "number"
+            },
+            "autoRecallMinScore": {
+                "type": "number"
+            },
+            "buckets": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "actions": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "gatewayToken": {
+                        "type": "string"
+                    },
+                    "gatewayUrl": {
+                        "type": "string"
+                    },
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "extractionModel": {
+                        "type": "string"
+                    },
+                    "reminder": {
+                        "type": "object",
+                        "properties": {
+                            "enabled": {
+                                "type": "boolean"
+                            },
+                            "nagIntervalMinutes": {
+                                "type": "number"
+                            },
+                            "defaultTime": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "payment": {
+                        "type": "object",
+                        "properties": {
+                            "enabled": {
+                                "type": "boolean"
+                            },
+                            "autoExecuteThreshold": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                            },
+                            "maxAutoExecuteAmount": {
+                                "type": "number",
+                                "minimum": 0
+                            }
+                        }
+                    }
+                }
+            },
+            "search": {
+                "type": "object",
+                "properties": {
+                    "excludeBuckets": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
                     }
                 }
             }
