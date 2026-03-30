@@ -218,7 +218,9 @@
                 }
             },
             "confidenceThreshold": {
-                "type": "number"
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
             },
             "autoCapture": {
                 "type": "object",
@@ -311,7 +313,8 @@
                             },
                             "autoExecuteThreshold": {
                                 "type": "number",
-                                "minimum": 0
+                                "minimum": 0,
+                                "maximum": 1
                             },
                             "maxAutoExecuteAmount": {
                                 "type": "number",

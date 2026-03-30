@@ -13,6 +13,7 @@ brain/lancedb/
 
 # Secrets
 .env
+.env.*
 
 # Runtime / temp
 *.tmp
