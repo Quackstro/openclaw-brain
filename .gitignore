@@ -1,8 +1,6 @@
-node_modules/
-dist/
-*.lance/
-brain/lancedb/
-.env
-extensions/
-package-lock.json
-*.tsbuildinfo
+# OS
+.DS_Store
+
+# Runtime / temp
+*.tmp
+*.log
