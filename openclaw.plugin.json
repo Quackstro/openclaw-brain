@@ -24,6 +24,24 @@
         "confidenceThreshold": {
             "label": "Confidence Threshold",
             "help": "Minimum confidence to auto-route (0.0-1.0, default 0.80)"
+        },
+        "autoCapture.extractionApiKey": {
+            "label": "Auto-Capture Extraction API Key",
+            "sensitive": true,
+            "placeholder": "sk-...",
+            "help": "API key for the extraction LLM used by auto-capture"
+        },
+        "classifier.apiKey": {
+            "label": "Classifier API Key",
+            "sensitive": true,
+            "placeholder": "sk-...",
+            "help": "API key for the classification LLM"
+        },
+        "actions.gatewayToken": {
+            "label": "Actions Gateway Token",
+            "sensitive": true,
+            "placeholder": "token-...",
+            "help": "Authentication token for the actions gateway"
         }
     },
     "configSchema": {
@@ -292,10 +310,12 @@
                                 "type": "boolean"
                             },
                             "autoExecuteThreshold": {
-                                "type": "number"
+                                "type": "number",
+                                "minimum": 0
                             },
                             "maxAutoExecuteAmount": {
-                                "type": "number"
+                                "type": "number",
+                                "minimum": 0
                             }
                         }
                     }

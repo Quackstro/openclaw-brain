@@ -9,11 +9,12 @@
   },
   "devDependencies": {
     "tsx": "^4.19.4",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.0.0"
   },
   "openclaw": {
     "extensions": [
-      "./index.ts"
+      "./src/index.ts"
     ],
     "install": {
       "npmSpec": "@quackstro/brain",
@@ -22,10 +23,10 @@
     }
   },
   "scripts": {
-    "test": "npx tsx tests/store.test.ts && npx tsx tests/phase1.test.ts && npx tsx tests/phase2.test.ts",
-    "test:store": "npx tsx tests/store.test.ts",
-    "test:phase1": "npx tsx tests/phase1.test.ts",
-    "test:phase2": "npx tsx tests/phase2.test.ts",
+    "test": "vitest run",
+    "test:store": "vitest run src/store.test.ts",
+    "test:classifier": "vitest run src/classifier.test.ts",
+    "test:auto-capture": "vitest run src/auto-capture.test.ts",
     "build": "echo 'TypeScript compilation handled by OpenClaw runtime'"
   }
 }
